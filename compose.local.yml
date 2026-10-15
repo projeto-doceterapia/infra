@@ -1,0 +1,27 @@
+# Local development override. Use together with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f compose.local.yml up --build <service>
+#
+# It builds a chosen service from its sibling checkout (../<repo>) instead of
+# pulling the image, and publishes the back-end port for Swagger. Services you
+# do not name on the command line keep their pulled images from the base file.
+
+services:
+  banco-de-dados:
+    build:
+      context: ../banco-de-dados
+
+  back-end:
+    build:
+      context: ../back-end
+    # Expose the API on the host for Swagger UI (/swagger-ui/index.html). The
+    # base stack keeps the back-end on the internal network only; publishing a
+    # port needs the `publica` bridge, so attach it here too.
+    ports:
+      - "${BACK_END_HOST_PORT:-8080}:8080"
+    networks:
+      - publica
+      - interna
+
+  front-end:
+    build:
+      context: ../front-end
