@@ -1,0 +1,2 @@
+# Local environment with real secrets. Only .env.example is tracked.
+.env

@@ -1,0 +1,99 @@
+# Base stack for the Doceterapia system. Pulls prebuilt, pinned GHCR images
+# only; it never builds. Copy .env.example to .env and fill it before use.
+# Every variable is passed explicitly per service (no shared env_file) and is
+# required (${VAR:?message}) so a missing value stops compose with its name.
+#
+# Networks: `interna` is Docker-internal (internal: true) and holds the
+# database and back-end, so neither is reachable from the host nor the
+# internet; `publica` is a normal bridge that carries only host-facing
+# traffic. The front-end sits on both: it publishes its port on `publica`
+# and proxies to the back-end over `interna`.
+
+name: doceterapia
+
+services:
+  banco-de-dados:
+    image: ghcr.io/projeto-doceterapia/banco-de-dados:${BANCO_DE_DADOS_TAG:?set BANCO_DE_DADOS_TAG in .env}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?set MYSQL_DATABASE in .env}
+      MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+    volumes:
+      - banco-de-dados-data:/var/lib/mysql
+    networks:
+      - interna
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  back-end:
+    image: ghcr.io/projeto-doceterapia/back-end:${BACK_END_TAG:?set BACK_END_TAG in .env}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:?set SPRING_PROFILES_ACTIVE in .env}
+      DB_URL: ${DB_URL:?set DB_URL in .env}
+      DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+    networks:
+      - interna
+    depends_on:
+      banco-de-dados:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  front-end:
+    image: ghcr.io/projeto-doceterapia/front-end:${FRONT_END_TAG:?set FRONT_END_TAG in .env}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      API_UPSTREAM: ${API_UPSTREAM:?set API_UPSTREAM in .env}
+    ports:
+      # Only the web app is published to the host. Container listens on 8080
+      # (unprivileged nginx). Override FRONTEND_HOST_PORT only for local tests.
+      - "${FRONTEND_HOST_PORT:-3000}:8080"
+    networks:
+      # Publishes its port on `publica` and proxies /api to the back-end over
+      # the isolated `interna` network.
+      - publica
+      - interna
+    depends_on:
+      back-end:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  banco-de-dados-data:
+
+networks:
+  # Isolated back-plane: no gateway, so its members (the database and back-end)
+  # have no inbound or outbound host/internet reachability. Containers here
+  # cannot publish ports.
+  interna:
+    driver: bridge
+    internal: true
+  # Host/internet-facing bridge. Only services that must be reached from the
+  # host (or forward traffic in) attach here; currently just the front-end,
+  # which publishes its port.
+  publica:
+    driver: bridge
