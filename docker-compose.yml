@@ -4,7 +4,7 @@
 # required (${VAR:?message}) so a missing value stops compose with its name.
 #
 # Networks: `interna` is Docker-internal (internal: true) and holds the
-# database and back-end, so neither is reachable from the host nor the
+# database, back-end and redis, so none is reachable from the host nor the
 # internet; `publica` is a normal bridge that carries only host-facing
 # traffic. The front-end sits on both: it publishes its port on `publica`
 # and proxies to the back-end over `interna`.
@@ -82,13 +82,46 @@ services:
       retries: 3
       start_period: 5s
 
+  redis:
+    image: redis:${REDIS_TAG:?set REDIS_TAG in .env}
+    restart: unless-stopped
+    # AOF persistence (everysec), no key eviction, password-protected.
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    volumes:
+      - redis-data:/data
+    networks:
+      - interna
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # --- Assistant services (orquestrador, adaptador-baileys) ---------------
+  # Added by a later task once their images are published. The adapter will
+  # join on the `baileys` profile. Intentionally empty for now: do not add
+  # services whose images do not exist yet.
+
 volumes:
   banco-de-dados-data:
+  redis-data:
 
 networks:
-  # Isolated back-plane: no gateway, so its members (the database and back-end)
-  # have no inbound or outbound host/internet reachability. Containers here
-  # cannot publish ports.
+  # Isolated back-plane: no gateway, so its members (the database, back-end and
+  # redis) have no inbound or outbound host/internet reachability. Containers
+  # here cannot publish ports.
   interna:
     driver: bridge
     internal: true

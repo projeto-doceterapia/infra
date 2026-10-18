@@ -2,8 +2,9 @@
 #   docker compose -f docker-compose.yml -f compose.local.yml up --build <service>
 #
 # It builds a chosen service from its sibling checkout (../<repo>) instead of
-# pulling the image, and publishes the back-end port for Swagger. Services you
-# do not name on the command line keep their pulled images from the base file.
+# pulling the image, publishes the back-end port for Swagger, and adds an
+# ngrok tunnel (profile `tunnel`) for Cloud API webhook tests. Services you do
+# not name on the command line keep their pulled images from the base file.
 
 services:
   banco-de-dados:
@@ -25,3 +26,32 @@ services:
   front-end:
     build:
       context: ../front-end
+
+  # HTTPS tunnel to the orchestrator webhook, for Meta Cloud API tests.
+  # Only starts with `--profile tunnel`. NOT VERIFIABLE until the orchestrator
+  # service exists (added by a later task); NGROK_UPSTREAM points at it.
+  ngrok:
+    image: ngrok/ngrok:${NGROK_TAG:?set NGROK_TAG in .env}
+    profiles:
+      - tunnel
+    command:
+      - http
+      - ${NGROK_UPSTREAM:?set NGROK_UPSTREAM in .env}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+    # ngrok's local inspection UI; the public HTTPS URL is printed in its logs.
+    ports:
+      - "${NGROK_WEB_PORT:-4040}:4040"
+    networks:
+      # Dials out to the ngrok service over `saida` and forwards inbound
+      # requests to the orchestrator over the isolated `interna` network.
+      - saida
+      - interna
+
+networks:
+  interna:
+    driver: bridge
+  # Egress-only bridge: carries outbound traffic for services that must reach
+  # the internet (here, ngrok) without publishing any port.
+  saida:
+    driver: bridge
