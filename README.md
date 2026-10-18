@@ -30,11 +30,11 @@ docker compose up
 ```
 
 Pulls the images at the tags set in `.env` and starts `banco-de-dados`,
-`back-end` and `front-end`. The web app is published on
-`http://localhost:3000` (override with `FRONTEND_HOST_PORT`). The database and
-back-end sit on the Docker-internal network `interna` (no host or internet
-reachability); only the front-end is on the host-facing `publica` network and
-publishes a port.
+`back-end`, `front-end` and `redis`. The web app is published on
+`http://localhost:3000` (override with `FRONTEND_HOST_PORT`). The database,
+back-end and redis sit on the Docker-internal network `interna` (no host or
+internet reachability); only the front-end is on the host-facing `publica`
+network and publishes a port.
 
 > Note: the full stack does not come up yet. The front-end waits for a healthy
 > back-end, and the back-end cannot become healthy against the currently
@@ -60,19 +60,30 @@ To make that published port reachable it also attaches the back-end to the
 
 ## Networks
 
-- `interna`: Docker-internal (`internal: true`). Holds `banco-de-dados` and
-  `back-end`. Services here have no host or internet reachability and cannot
-  publish ports, so the database is never exposed.
+- `interna`: Docker-internal (`internal: true`). Holds `banco-de-dados`,
+  `back-end` and `redis`. Services here have no host or internet reachability
+  and cannot publish ports, so the database is never exposed.
 - `publica`: normal bridge for host-facing traffic. Only the front-end is on
   it in the default stack (and the back-end when the local override publishes
   its port).
 - `front-end` is attached to both: it publishes its port on `publica` and
   proxies `/api` to the back-end over `interna`.
 
+### HTTPS tunnel (Cloud API webhook tests)
+
+```sh
+docker compose -f docker-compose.yml -f compose.local.yml --profile tunnel up
+```
+
+Starts an `ngrok` tunnel to the orchestrator webhook (`NGROK_UPSTREAM`); the
+public HTTPS URL is printed in the `ngrok` logs. Requires `NGROK_AUTHTOKEN`.
+The orchestrator service is added by a later task, so this mode is not usable
+until then.
+
 ## Stop
 
 ```sh
-docker compose down        # keeps named volumes (data)
+docker compose down        # keeps named volumes (data, Redis)
 docker compose down -v      # also removes the volumes
 ```
 
@@ -81,10 +92,12 @@ docker compose down -v      # also removes the volumes
 `.env.example` lists every variable grouped by service, with placeholder
 values. Groups:
 
-- Image tags: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`
+- Image tags: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`, `REDIS_TAG`
   (pinned to the currently published versions, never `latest`; bump to a newer
   published build by setting the new `sha-<short>` or semver).
 - banco-de-dados: `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`.
 - back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`.
 - front-end: `API_UPSTREAM`, `FRONTEND_HOST_PORT`.
-- Local override only: `BACK_END_HOST_PORT`.
+- redis: `REDIS_PASSWORD`.
+- Local override only: `BACK_END_HOST_PORT`, `NGROK_AUTHTOKEN`, `NGROK_UPSTREAM`,
+  `NGROK_WEB_PORT`, `NGROK_TAG`.
