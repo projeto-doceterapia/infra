@@ -6,8 +6,10 @@
 # Networks: `interna` is Docker-internal (internal: true) and holds the
 # database, back-end and redis, so none is reachable from the host nor the
 # internet; `publica` is a normal bridge that carries only host-facing
-# traffic. The front-end sits on both: it publishes its port on `publica`
-# and proxies to the back-end over `interna`.
+# traffic; `saida` is an egress-only bridge for the assistant services that
+# need the internet. The front-end sits on `interna` + `publica` (publishes
+# its port and proxies to the back-end). orquestrador and adaptador-baileys
+# sit on `interna` + `saida` (in-stack traffic plus outbound internet).
 
 name: doceterapia
 
@@ -109,19 +111,102 @@ services:
       retries: 10
       start_period: 10s
 
-  # --- Assistant services (orquestrador, adaptador-baileys) ---------------
-  # Added by a later task once their images are published. The adapter will
-  # join on the `baileys` profile. Intentionally empty for now: do not add
-  # services whose images do not exist yet.
+  # --- Assistant services --------------------------------------------------
+  # orquestrador is a base service (always up). adaptador-baileys joins only on
+  # the `baileys` profile (below). Both sit on `interna` for in-stack traffic
+  # (redis, back-end, each other) and on `saida` for the outbound internet
+  # calls they need; in Cloud API mode the inbound webhook is exposed through
+  # the ngrok tunnel in compose.local.yml, so no host port is published here.
+  orquestrador:
+    image: ghcr.io/projeto-doceterapia/orquestrador:${ORQUESTRADOR_TAG:?set ORQUESTRADOR_TAG in .env}
+    restart: unless-stopped
+    environment:
+      CHANNEL: ${CHANNEL:?set CHANNEL in .env}
+      BENEFICIARIA_TELEFONE: ${BENEFICIARIA_TELEFONE:?set BENEFICIARIA_TELEFONE in .env}
+      # Reaches the core on the internal network.
+      CORE_BASE_URL: ${CORE_BASE_URL:?set CORE_BASE_URL in .env}
+      REDIS_URL: ${ORQUESTRADOR_REDIS_URL:?set ORQUESTRADOR_REDIS_URL in .env}
+      CONV_TTL_MIN: ${CONV_TTL_MIN:?set CONV_TTL_MIN in .env}
+      MAX_AJUSTES: ${MAX_AJUSTES:?set MAX_AJUSTES in .env}
+      RETRY_MAX_TENTATIVAS: ${RETRY_MAX_TENTATIVAS:?set RETRY_MAX_TENTATIVAS in .env}
+      RETRY_BASE_S: ${RETRY_BASE_S:?set RETRY_BASE_S in .env}
+      RETRY_CAP_S: ${RETRY_CAP_S:?set RETRY_CAP_S in .env}
+      TZ: ${TZ:?set TZ in .env}
+      # Baileys channel: the adapter base URL and the shared/HMAC secrets.
+      ADAPTER_URL: ${ADAPTER_URL:?set ADAPTER_URL in .env}
+      ADAPTER_SECRET: ${ADAPTER_SECRET:?set ADAPTER_SECRET in .env}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?set WEBHOOK_SECRET in .env}
+      # Cloud API channel (used only when CHANNEL=cloud_api).
+      CLOUD_API_PHONE_ID: ${CLOUD_API_PHONE_ID:?set CLOUD_API_PHONE_ID in .env}
+      CLOUD_API_TOKEN: ${CLOUD_API_TOKEN:?set CLOUD_API_TOKEN in .env}
+      CLOUD_API_APP_SECRET: ${CLOUD_API_APP_SECRET:?set CLOUD_API_APP_SECRET in .env}
+      CLOUD_API_VERIFY_TOKEN: ${CLOUD_API_VERIFY_TOKEN:?set CLOUD_API_VERIFY_TOKEN in .env}
+      CLOUD_API_GRAPH_VERSION: ${CLOUD_API_GRAPH_VERSION:?set CLOUD_API_GRAPH_VERSION in .env}
+      # LLM provider (purchase extraction).
+      LLM_PROVIDER: ${LLM_PROVIDER:?set LLM_PROVIDER in .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in .env}
+      GEMINI_MODEL: ${GEMINI_MODEL:?set GEMINI_MODEL in .env}
+    networks:
+      # Reaches redis and the back-end on `interna`; needs `saida` for outbound
+      # calls to the LLM provider and the Meta Graph API (Cloud API mode).
+      - interna
+      - saida
+    depends_on:
+      redis:
+        condition: service_healthy
+      back-end:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Baileys adapter: starts only with `--profile baileys`. Cloud API mode runs
+  # without it. Keeps the WhatsApp session in a named volume and forwards
+  # inbound events to the orchestrator webhook over the internal network.
+  adaptador-baileys:
+    image: ghcr.io/projeto-doceterapia/adaptador-baileys:${ADAPTADOR_BAILEYS_TAG:?set ADAPTADOR_BAILEYS_TAG in .env}
+    profiles:
+      - baileys
+    restart: unless-stopped
+    environment:
+      GRUPO_JID: ${GRUPO_JID:?set GRUPO_JID in .env}
+      ADAPTER_SECRET: ${ADAPTER_SECRET:?set ADAPTER_SECRET in .env}
+      # Orchestrator webhook the adapter posts inbound events to. The
+      # orchestrator exposes the inbound route at /webhook on port 8000
+      # (see .env.example and README).
+      WEBHOOK_URL: ${WEBHOOK_URL:?set WEBHOOK_URL in .env}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?set WEBHOOK_SECRET in .env}
+      SESSION_DIR: ${BAILEYS_SESSION_DIR:?set BAILEYS_SESSION_DIR in .env}
+      LOG_LEVEL: ${BAILEYS_LOG_LEVEL:?set BAILEYS_LOG_LEVEL in .env}
+    volumes:
+      - adaptador-baileys-session:/data/session
+    networks:
+      # Reaches the orchestrator on `interna`; needs `saida` for the outbound
+      # WhatsApp connection.
+      - interna
+      - saida
+    depends_on:
+      orquestrador:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   banco-de-dados-data:
   redis-data:
+  adaptador-baileys-session:
 
 networks:
-  # Isolated back-plane: no gateway, so its members (the database, back-end and
-  # redis) have no inbound or outbound host/internet reachability. Containers
-  # here cannot publish ports.
+  # Isolated back-plane: no gateway, so its members (the database, back-end,
+  # redis and the assistant services) have no inbound or outbound host/internet
+  # reachability. Containers here cannot publish ports.
   interna:
     driver: bridge
     internal: true
@@ -129,4 +214,9 @@ networks:
   # host (or forward traffic in) attach here; currently just the front-end,
   # which publishes its port.
   publica:
+    driver: bridge
+  # Egress-only bridge: gives the assistant services (orquestrador,
+  # adaptador-baileys) outbound internet access without publishing any port,
+  # while they stay on `interna` for in-stack traffic.
+  saida:
     driver: bridge

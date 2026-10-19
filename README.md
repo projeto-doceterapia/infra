@@ -30,11 +30,34 @@ docker compose up
 ```
 
 Pulls the images at the tags set in `.env` and starts `banco-de-dados`,
-`back-end`, `front-end` and `redis`. The web app is published on
+`back-end`, `front-end`, `redis` and `orquestrador`. The web app is published on
 `http://localhost:3000` (override with `FRONTEND_HOST_PORT`). The database,
 back-end and redis sit on the Docker-internal network `interna` (no host or
-internet reachability); only the front-end is on the host-facing `publica`
-network and publishes a port.
+internet reachability); the orchestrator is also on `interna` but joins the
+`saida` egress bridge for its outbound calls (LLM, Meta Cloud API). Only the
+front-end is on the host-facing `publica` network and publishes a port. In this
+default (Cloud API) mode no WhatsApp adapter runs; the orchestrator exposes its
+own webhook.
+
+### WhatsApp via the Baileys adapter
+
+```sh
+docker compose --profile baileys up
+```
+
+Adds `adaptador-baileys` to the stack. It keeps the WhatsApp session in the
+named volume `adaptador-baileys-session` (survives `docker compose down`), only
+processes messages from the group in `GRUPO_JID`, and forwards inbound events to
+the orchestrator webhook (`WEBHOOK_URL`) over the internal network.
+
+Pair the device the first time by reading the QR from the adapter logs:
+
+```sh
+docker compose --profile baileys logs -f adaptador-baileys
+```
+
+Scan the printed QR with WhatsApp (Linked devices) on the assistant's phone. The
+session then persists in the volume, so later starts reconnect without a new QR.
 
 > Note: the full stack does not come up yet. The front-end waits for a healthy
 > back-end, and the back-end cannot become healthy against the currently
@@ -46,8 +69,9 @@ network and publishes a port.
 ### Develop a service locally
 
 Build one or more services from their sibling checkouts (`../back-end`,
-`../front-end`, `../banco-de-dados`) instead of pulling them; the services you do
-not name keep their published images:
+`../front-end`, `../banco-de-dados`, `../assistente-whatsapp/orquestrador`,
+`../assistente-whatsapp/adaptador-baileys`) instead of pulling them; the services
+you do not name keep their published images:
 
 ```sh
 docker compose -f docker-compose.yml -f compose.local.yml up --build back-end
@@ -61,11 +85,15 @@ To make that published port reachable it also attaches the back-end to the
 ## Networks
 
 - `interna`: Docker-internal (`internal: true`). Holds `banco-de-dados`,
-  `back-end` and `redis`. Services here have no host or internet reachability
+  `back-end`, `redis` and the assistant services (`orquestrador`,
+  `adaptador-baileys`). Services here have no host or internet reachability
   and cannot publish ports, so the database is never exposed.
 - `publica`: normal bridge for host-facing traffic. Only the front-end is on
   it in the default stack (and the back-end when the local override publishes
   its port).
+- `saida`: egress-only bridge. Carries the outbound internet traffic of
+  `orquestrador` and `adaptador-baileys` (and `ngrok` in the local override);
+  these also stay on `interna` for in-stack traffic. It publishes no port.
 - `front-end` is attached to both: it publishes its port on `publica` and
   proxies `/api` to the back-end over `interna`.
 
@@ -75,10 +103,18 @@ To make that published port reachable it also attaches the back-end to the
 docker compose -f docker-compose.yml -f compose.local.yml --profile tunnel up
 ```
 
-Starts an `ngrok` tunnel to the orchestrator webhook (`NGROK_UPSTREAM`); the
-public HTTPS URL is printed in the `ngrok` logs. Requires `NGROK_AUTHTOKEN`.
-The orchestrator service is added by a later task, so this mode is not usable
-until then.
+Starts an `ngrok` tunnel to the orchestrator webhook (`NGROK_UPSTREAM`, default
+`orquestrador:8000`); the public HTTPS URL is printed in the `ngrok` logs and
+reaches the orchestrator over the internal network. Requires `NGROK_AUTHTOKEN`.
+
+In `cloud_api` mode, register the webhook with the Meta Cloud API using the
+orchestrator's inbound route, `/webhook`:
+
+```
+https://<ngrok-host>/webhook
+```
+
+Use `CLOUD_API_VERIFY_TOKEN` as the verify token Meta sends on the GET handshake.
 
 ## Stop
 
@@ -92,12 +128,22 @@ docker compose down -v      # also removes the volumes
 `.env.example` lists every variable grouped by service, with placeholder
 values. Groups:
 
-- Image tags: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`, `REDIS_TAG`
-  (pinned to the currently published versions, never `latest`; bump to a newer
-  published build by setting the new `sha-<short>` or semver).
+- Image tags: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`, `REDIS_TAG`,
+  `ORQUESTRADOR_TAG`, `ADAPTADOR_BAILEYS_TAG` (pinned to the currently published
+  versions, never `latest`; bump to a newer published build by setting the new
+  `sha-<short>` or semver).
 - banco-de-dados: `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`.
 - back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`.
 - front-end: `API_UPSTREAM`, `FRONTEND_HOST_PORT`.
 - redis: `REDIS_PASSWORD`.
+- orquestrador: `CHANNEL`, `BENEFICIARIA_TELEFONE`, `CORE_BASE_URL`,
+  `ORQUESTRADOR_REDIS_URL`, `CONV_TTL_MIN`, `MAX_AJUSTES`, `RETRY_MAX_TENTATIVAS`,
+  `RETRY_BASE_S`, `RETRY_CAP_S`, `TZ`, `ADAPTER_URL`, `ADAPTER_SECRET`,
+  `WEBHOOK_SECRET`, `CLOUD_API_PHONE_ID`, `CLOUD_API_TOKEN`, `CLOUD_API_APP_SECRET`,
+  `CLOUD_API_VERIFY_TOKEN`, `CLOUD_API_GRAPH_VERSION`, `LLM_PROVIDER`,
+  `GEMINI_API_KEY`, `GEMINI_MODEL`.
+- adaptador-baileys (profile `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
+  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL` (plus `ADAPTER_SECRET` and
+  `WEBHOOK_SECRET`, shared with the orchestrator).
 - Local override only: `BACK_END_HOST_PORT`, `NGROK_AUTHTOKEN`, `NGROK_UPSTREAM`,
   `NGROK_WEB_PORT`, `NGROK_TAG`.

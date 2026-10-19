@@ -27,16 +27,24 @@ services:
     build:
       context: ../front-end
 
+  orquestrador:
+    build:
+      context: ../assistente-whatsapp/orquestrador
+
+  adaptador-baileys:
+    build:
+      context: ../assistente-whatsapp/adaptador-baileys
+
   # HTTPS tunnel to the orchestrator webhook, for Meta Cloud API tests.
-  # Only starts with `--profile tunnel`. NOT VERIFIABLE until the orchestrator
-  # service exists (added by a later task); NGROK_UPSTREAM points at it.
+  # Only starts with `--profile tunnel`. NGROK_UPSTREAM defaults to the
+  # orchestrator service; override it in .env only to tunnel somewhere else.
   ngrok:
     image: ngrok/ngrok:${NGROK_TAG:?set NGROK_TAG in .env}
     profiles:
       - tunnel
     command:
       - http
-      - ${NGROK_UPSTREAM:?set NGROK_UPSTREAM in .env}
+      - ${NGROK_UPSTREAM:-orquestrador:8000}
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
     # ngrok's local inspection UI; the public HTTPS URL is printed in its logs.
