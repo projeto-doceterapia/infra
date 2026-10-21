@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  compose-config:
+    name: Validate compose files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Provide .env from the example
+        run: cp .env.example .env
+
+      - name: Validate base compose
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Validate base + local override
+        run: docker compose -f docker-compose.yml -f compose.local.yml config --quiet
