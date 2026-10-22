@@ -79,6 +79,8 @@ docker compose -f docker-compose.yml -f compose.local.yml up --build back-end
 
 The override also publishes the back-end port for Swagger UI
 (`http://localhost:8080/swagger-ui/index.html`, override with `BACK_END_HOST_PORT`).
+It is bound to `127.0.0.1` by default; set `BACK_END_HOST_BIND=0.0.0.0` to reach
+it from other hosts (see Exposing the local ports).
 To make that published port reachable it also attaches the back-end to the
 `publica` network; in the default stack the back-end stays on `interna` only.
 
@@ -116,6 +118,20 @@ https://<ngrok-host>/webhook
 
 Use `CLOUD_API_VERIFY_TOKEN` as the verify token Meta sends on the GET handshake.
 
+### Exposing the local ports
+
+The two ports the local override publishes are bound to `127.0.0.1` by
+default, so only the machine running the stack can reach them:
+
+| Variable | Port | What it exposes |
+|---|---|---|
+| `BACK_END_HOST_BIND` | `BACK_END_HOST_PORT` (8080) | Back-end API and Swagger UI; business routes have no authentication |
+| `NGROK_WEB_BIND` | `NGROK_WEB_PORT` (4040) | ngrok inspection UI; shows request bodies and signatures, no authentication |
+
+On a provisioned server, set the variable to `0.0.0.0` in `.env` to reach
+the panel from outside, and restrict the port with a firewall or security group
+(allow only your own address). The front-end port is not affected: it is the
+web app and is published on all interfaces.
 ## Stop
 
 ```sh
@@ -145,5 +161,5 @@ values. Groups:
 - adaptador-baileys (profile `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
   `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL` (plus `ADAPTER_SECRET` and
   `WEBHOOK_SECRET`, shared with the orchestrator).
-- Local override only: `BACK_END_HOST_PORT`, `NGROK_AUTHTOKEN`, `NGROK_UPSTREAM`,
-  `NGROK_WEB_PORT`, `NGROK_TAG`.
+- Local override only: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`, `NGROK_AUTHTOKEN`,
+  `NGROK_UPSTREAM`, `NGROK_WEB_PORT`, `NGROK_WEB_BIND`, `NGROK_TAG`.

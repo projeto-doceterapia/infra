@@ -14,11 +14,12 @@ services:
   back-end:
     build:
       context: ../back-end
-    # Expose the API on the host for Swagger UI (/swagger-ui/index.html). The
+    # Expose the API on the host for Swagger UI (/swagger-ui/index.html),
+    # bound to loopback by default (see BACK_END_HOST_BIND in .env.example). The
     # base stack keeps the back-end on the internal network only; publishing a
     # port needs the `publica` bridge, so attach it here too.
     ports:
-      - "${BACK_END_HOST_PORT:-8080}:8080"
+      - "${BACK_END_HOST_BIND:-127.0.0.1}:${BACK_END_HOST_PORT:-8080}:8080"
     networks:
       - publica
       - interna
@@ -47,9 +48,11 @@ services:
       - ${NGROK_UPSTREAM:-orquestrador:8000}
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
-    # ngrok's local inspection UI; the public HTTPS URL is printed in its logs.
+    # ngrok's local inspection UI (unauthenticated; it shows request bodies).
+    # Bound to loopback by default; see NGROK_WEB_BIND in .env.example.
+    # The public HTTPS URL is printed in the ngrok logs.
     ports:
-      - "${NGROK_WEB_PORT:-4040}:4040"
+      - "${NGROK_WEB_BIND:-127.0.0.1}:${NGROK_WEB_PORT:-4040}:4040"
     networks:
       # Dials out to the ngrok service over `saida` and forwards inbound
       # requests to the orchestrator over the isolated `interna` network.
