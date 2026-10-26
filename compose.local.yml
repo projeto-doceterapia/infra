@@ -2,8 +2,9 @@
 #   docker compose -f docker-compose.yml -f compose.local.yml up --build <service>
 #
 # It builds a chosen service from its sibling checkout (../<repo>) instead of
-# pulling the image, and publishes the back-end port for Swagger. Services you
-# do not name on the command line keep their pulled images from the base file.
+# pulling the image, publishes the back-end port for Swagger, and adds an
+# ngrok tunnel (profile `tunnel`) for Cloud API webhook tests. Services you do
+# not name on the command line keep their pulled images from the base file.
 
 services:
   banco-de-dados:
@@ -13,11 +14,12 @@ services:
   back-end:
     build:
       context: ../back-end
-    # Expose the API on the host for Swagger UI (/swagger-ui/index.html). The
+    # Expose the API on the host for Swagger UI (/swagger-ui/index.html),
+    # bound to loopback by default (see BACK_END_HOST_BIND in .env.example). The
     # base stack keeps the back-end on the internal network only; publishing a
     # port needs the `publica` bridge, so attach it here too.
     ports:
-      - "${BACK_END_HOST_PORT:-8080}:8080"
+      - "${BACK_END_HOST_BIND:-127.0.0.1}:${BACK_END_HOST_PORT:-8080}:8080"
     networks:
       - publica
       - interna
@@ -25,3 +27,42 @@ services:
   front-end:
     build:
       context: ../front-end
+
+  orquestrador:
+    build:
+      context: ../assistente-whatsapp/orquestrador
+
+  adaptador-baileys:
+    build:
+      context: ../assistente-whatsapp/adaptador-baileys
+
+  # HTTPS tunnel to the orchestrator webhook, for Meta Cloud API tests.
+  # Only starts with `--profile tunnel`. NGROK_UPSTREAM defaults to the
+  # orchestrator service; override it in .env only to tunnel somewhere else.
+  ngrok:
+    image: ngrok/ngrok:${NGROK_TAG:?set NGROK_TAG in .env}
+    profiles:
+      - tunnel
+    command:
+      - http
+      - ${NGROK_UPSTREAM:-orquestrador:8000}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+    # ngrok's local inspection UI (unauthenticated; it shows request bodies).
+    # Bound to loopback by default; see NGROK_WEB_BIND in .env.example.
+    # The public HTTPS URL is printed in the ngrok logs.
+    ports:
+      - "${NGROK_WEB_BIND:-127.0.0.1}:${NGROK_WEB_PORT:-4040}:4040"
+    networks:
+      # Dials out to the ngrok service over `saida` and forwards inbound
+      # requests to the orchestrator over the isolated `interna` network.
+      - saida
+      - interna
+
+networks:
+  interna:
+    driver: bridge
+  # Egress-only bridge: carries outbound traffic for services that must reach
+  # the internet (here, ngrok) without publishing any port.
+  saida:
+    driver: bridge
