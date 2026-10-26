@@ -61,6 +61,19 @@ docker compose --profile baileys logs -f adaptador-baileys
 Scan the printed QR with WhatsApp (Linked devices) on the assistant's phone. The
 session then persists in the volume, so later starts reconnect without a new QR.
 
+Find the group id for `GRUPO_JID` after pairing: set `DISCOVER_GROUPS=true` in
+`.env`, restart the adapter, read the logged ids and names, then turn it back
+off:
+
+```sh
+docker compose --profile baileys up -d adaptador-baileys
+docker compose --profile baileys logs adaptador-baileys | grep 'group discovery'
+```
+
+Copy the `jid` of the dedicated group into `GRUPO_JID`, set `DISCOVER_GROUPS`
+back to `false` and run `docker compose --profile baileys up -d` again. The log
+lists group names, so keep it private.
+
 ### Develop a service locally
 
 Build one or more services from their sibling checkouts (`../back-end`,
@@ -154,7 +167,7 @@ values. Groups:
   `CLOUD_API_VERIFY_TOKEN`, `CLOUD_API_GRAPH_VERSION`, `LLM_PROVIDER`,
   `GEMINI_API_KEY`, `GEMINI_MODEL`.
 - adaptador-baileys (profile `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
-  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL` (plus `ADAPTER_SECRET` and
-  `WEBHOOK_SECRET`, shared with the orchestrator).
+  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL`, `DISCOVER_GROUPS` (plus
+  `ADAPTER_SECRET` and `WEBHOOK_SECRET`, shared with the orchestrator).
 - Local override only: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`, `NGROK_AUTHTOKEN`,
   `NGROK_UPSTREAM`, `NGROK_WEB_PORT`, `NGROK_WEB_BIND`, `NGROK_TAG`.
