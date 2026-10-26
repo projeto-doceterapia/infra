@@ -1,161 +1,163 @@
 # infra
 
-Docker Compose environment for the Doceterapia system. The only repo needed to
-run the stack: it pulls prebuilt, pinned images from GHCR and never builds by
-default.
+Ambiente Docker Compose do sistema Doceterapia. O único repositório necessário
+para executar a pilha: baixa imagens prontas e fixadas do GHCR e nunca faz build
+por padrão.
 
-## Requirements
+## Requisitos
 
-- Docker with Compose v2.
-- A filled `.env` (see below). Nothing else on the host.
+- Docker com Compose v2.
+- Um `.env` preenchido (veja abaixo). Nada mais no host.
 
-## Setup
+## Configuração
 
 ```sh
-cp .env.example .env   # then fill in the secrets
+cp .env.example .env   # depois preencha os segredos
 ```
 
-`.env` is git-ignored. It ships with the image tags already set to the
-currently published versions, so the default stack runs as is; only the
-`replace-me` secrets must be filled. Every variable is required unless its
-comment says it has a default; a missing one stops `docker compose` with the
-variable's name.
+O `.env` é ignorado pelo git. Já vem com as tags das imagens definidas nas
+versões publicadas atualmente, então a pilha padrão executa como está; só os
+segredos `replace-me` precisam ser preenchidos. Toda variável é obrigatória a
+menos que seu comentário diga que tem um padrão; uma ausente interrompe o
+`docker compose` com o nome da variável.
 
-## Modes
+## Modos
 
-### Run the published stack (default)
+### Executar a pilha publicada (padrão)
 
 ```sh
 docker compose up
 ```
 
-Pulls the images at the tags set in `.env` and starts `banco-de-dados`,
-`back-end`, `front-end`, `redis` and `orquestrador`. The web app is published on
-`http://localhost:3000` (override with `FRONTEND_HOST_PORT`). The database,
-back-end and redis sit on the Docker-internal network `interna` (no host or
-internet reachability); the orchestrator is also on `interna` but joins the
-`saida` egress bridge for its outbound calls (LLM, Meta Cloud API). Only the
-front-end is on the host-facing `publica` network and publishes a port. Without
-the `baileys` profile no WhatsApp adapter runs; with `CHANNEL=baileys` (the
-default in `.env.example`) use the profile below. The `cloud_api` channel needs a
-public HTTPS route to the orchestrator's `/webhook`, which this stack does not
-publish; the only route provided is the development tunnel.
+Baixa as imagens nas tags definidas no `.env` e inicia `banco-de-dados`,
+`back-end`, `front-end`, `redis` e `orquestrador`. A aplicação web é publicada em
+`http://localhost:3000` (substitua com `FRONTEND_HOST_PORT`). O banco de dados, o
+back-end e o redis ficam na rede interna do Docker `interna` (sem alcance ao host
+ou à internet); o orquestrador também está na `interna`, mas entra na ponte de
+saída `saida` para suas chamadas externas (LLM, Meta Cloud API). Apenas o
+front-end está na rede `publica`, voltada ao host, e publica uma porta. Sem o
+perfil `baileys` nenhum adaptador do WhatsApp executa; com `CHANNEL=baileys` (o
+padrão no `.env.example`) use o perfil abaixo. O canal `cloud_api` precisa de uma
+rota HTTPS pública para o `/webhook` do orquestrador, que esta pilha não publica;
+a única rota fornecida é o túnel de desenvolvimento.
 
-### WhatsApp via the Baileys adapter
+### WhatsApp via o adaptador Baileys
 
 ```sh
 docker compose --profile baileys up
 ```
 
-Adds `adaptador-baileys` to the stack. It keeps the WhatsApp session in the
-named volume `adaptador-baileys-session` (survives `docker compose down`), only
-processes messages from the group in `GRUPO_JID`, and forwards inbound events to
-the orchestrator webhook (`WEBHOOK_URL`) over the internal network.
+Adiciona `adaptador-baileys` à pilha. Ele mantém a sessão do WhatsApp no volume
+nomeado `adaptador-baileys-session` (sobrevive ao `docker compose down`),
+processa apenas mensagens do grupo em `GRUPO_JID` e encaminha os eventos de
+entrada ao webhook do orquestrador (`WEBHOOK_URL`) pela rede interna.
 
-Pair the device the first time by reading the QR from the adapter logs:
+Pareie o dispositivo na primeira vez lendo o QR nos logs do adaptador:
 
 ```sh
 docker compose --profile baileys logs -f adaptador-baileys
 ```
 
-Scan the printed QR with WhatsApp (Linked devices) on the assistant's phone. The
-session then persists in the volume, so later starts reconnect without a new QR.
+Escaneie o QR exibido com o WhatsApp (Aparelhos conectados) no telefone do
+assistente. A sessão então persiste no volume, então as inicializações
+posteriores reconectam sem um novo QR.
 
-Find the group id for `GRUPO_JID` after pairing: set `DISCOVER_GROUPS=true` in
-`.env`, restart the adapter, read the logged ids and names, then turn it back
-off:
+Encontre o id do grupo para `GRUPO_JID` após o pareamento: defina
+`DISCOVER_GROUPS=true` no `.env`, reinicie o adaptador, leia os ids e nomes
+registrados nos logs e depois desative-o novamente:
 
 ```sh
 docker compose --profile baileys up -d adaptador-baileys
 docker compose --profile baileys logs adaptador-baileys | grep 'group discovery'
 ```
 
-Copy the `jid` of the dedicated group into `GRUPO_JID`, set `DISCOVER_GROUPS`
-back to `false` and run `docker compose --profile baileys up -d` again. The log
-lists group names, so keep it private.
+Copie o `jid` do grupo dedicado para `GRUPO_JID`, defina `DISCOVER_GROUPS` de
+volta como `false` e execute `docker compose --profile baileys up -d` novamente.
+O log lista nomes de grupos, então mantenha-o privado.
 
-### Develop a service locally
+### Desenvolver um serviço localmente
 
-Build one or more services from their sibling checkouts (`../back-end`,
-`../front-end`, `../banco-de-dados`, `../assistente-whatsapp/orquestrador`,
-`../assistente-whatsapp/adaptador-baileys`) instead of pulling them; the services
-you do not name keep their published images:
+Faça o build de um ou mais serviços a partir dos checkouts vizinhos
+(`../back-end`, `../front-end`, `../banco-de-dados`,
+`../assistente-whatsapp/orquestrador`,
+`../assistente-whatsapp/adaptador-baileys`) em vez de baixá-los; os serviços que
+você não nomear mantêm suas imagens publicadas:
 
 ```sh
 docker compose -f docker-compose.yml -f compose.local.yml up --build back-end
 ```
 
-The override also publishes the back-end port for Swagger UI
-(`http://localhost:8080/swagger-ui/index.html`, override with `BACK_END_HOST_PORT`).
-It is bound to `127.0.0.1` by default; set `BACK_END_HOST_BIND=0.0.0.0` to reach
-it from other hosts (see Exposing the local ports).
-To make that published port reachable it also attaches the back-end to the
-`publica` network; in the default stack the back-end stays on `interna` only.
+O override também publica a porta do back-end para o Swagger UI
+(`http://localhost:8080/swagger-ui/index.html`, substitua com `BACK_END_HOST_PORT`).
+Ela está presa em `127.0.0.1` por padrão; defina `BACK_END_HOST_BIND=0.0.0.0`
+para alcançá-la a partir de outros hosts (veja Expor as portas locais).
+Para tornar essa porta publicada alcançável, ele também anexa o back-end à rede
+`publica`; na pilha padrão o back-end fica somente na `interna`.
 
-## Networks
+## Redes
 
-- `interna`: Docker-internal (`internal: true`). Holds `banco-de-dados`,
-  `back-end`, `redis` and the assistant services (`orquestrador`,
-  `adaptador-baileys`). Services here have no host or internet reachability
-  and cannot publish ports, so the database is never exposed.
-- `publica`: normal bridge for host-facing traffic. Only the front-end is on
-  it in the default stack (and the back-end when the local override publishes
-  its port).
-- `saida`: egress-only bridge. Carries the outbound internet traffic of
-  `orquestrador` and `adaptador-baileys` (and `ngrok` in the local override);
-  these also stay on `interna` for in-stack traffic. It publishes no port.
-- `front-end` is attached to both: it publishes its port on `publica` and
-  proxies `/api` to the back-end over `interna`.
+- `interna`: interna do Docker (`internal: true`). Contém `banco-de-dados`,
+  `back-end`, `redis` e os serviços do assistente (`orquestrador`,
+  `adaptador-baileys`). Os serviços aqui não têm alcance ao host ou à internet
+  e não podem publicar portas, então o banco de dados nunca é exposto.
+- `publica`: ponte normal para o tráfego voltado ao host. Apenas o front-end
+  está nela na pilha padrão (e o back-end quando o override local publica
+  sua porta).
+- `saida`: ponte somente de saída. Carrega o tráfego externo de internet de
+  `orquestrador` e `adaptador-baileys` (e `ngrok` no override local);
+  estes também ficam na `interna` para o tráfego dentro da pilha. Não publica porta.
+- `front-end` está anexado a ambas: publica sua porta na `publica` e
+  faz proxy de `/api` para o back-end pela `interna`.
 
-### HTTPS tunnel (Cloud API webhook tests)
+### Túnel HTTPS (testes de webhook da Cloud API)
 
 ```sh
 docker compose -f docker-compose.yml -f compose.local.yml --profile tunnel up
 ```
 
-Starts an `ngrok` tunnel to the orchestrator webhook (`NGROK_UPSTREAM`, default
-`orquestrador:8000`); the public HTTPS URL is printed in the `ngrok` logs and
-reaches the orchestrator over the internal network. Requires `NGROK_AUTHTOKEN`.
+Inicia um túnel `ngrok` para o webhook do orquestrador (`NGROK_UPSTREAM`, padrão
+`orquestrador:8000`); a URL HTTPS pública é exibida nos logs do `ngrok` e
+alcança o orquestrador pela rede interna. Requer `NGROK_AUTHTOKEN`.
 
-In `cloud_api` mode, register the webhook with the Meta Cloud API using the
-orchestrator's inbound route, `/webhook`:
+No modo `cloud_api`, registre o webhook na Meta Cloud API usando a rota de
+entrada do orquestrador, `/webhook`:
 
 ```
 https://<ngrok-host>/webhook
 ```
 
-Use `CLOUD_API_VERIFY_TOKEN` as the verify token Meta sends on the GET handshake.
+Use `CLOUD_API_VERIFY_TOKEN` como o verify token que a Meta envia no handshake GET.
 
-### Exposing the local ports
+### Expor as portas locais
 
-The two ports the local override publishes are bound to `127.0.0.1` by
-default, so only the machine running the stack can reach them:
+As duas portas que o override local publica estão presas em `127.0.0.1` por
+padrão, então apenas a máquina que executa a pilha pode alcançá-las:
 
-| Variable | Port | What it exposes |
+| Variável | Porta | O que expõe |
 |---|---|---|
-| `BACK_END_HOST_BIND` | `BACK_END_HOST_PORT` (8080) | Back-end API and Swagger UI; business routes have no authentication |
-| `NGROK_WEB_BIND` | `NGROK_WEB_PORT` (4040) | ngrok inspection UI; shows request bodies and signatures, no authentication |
+| `BACK_END_HOST_BIND` | `BACK_END_HOST_PORT` (8080) | API do back-end e Swagger UI; as rotas de negócio não têm autenticação |
+| `NGROK_WEB_BIND` | `NGROK_WEB_PORT` (4040) | UI de inspeção do ngrok; mostra corpos de requisição e assinaturas, sem autenticação |
 
-On a provisioned server, set the variable to `0.0.0.0` in `.env` to reach
-the panel from outside, and restrict the port with a firewall or security group
-(allow only your own address). The front-end port is not affected: it is the
-web app and is published on all interfaces.
-## Stop
+Em um servidor provisionado, defina a variável como `0.0.0.0` no `.env` para
+alcançar o painel de fora, e restrinja a porta com um firewall ou security group
+(permita apenas o seu próprio endereço). A porta do front-end não é afetada: é a
+aplicação web e é publicada em todas as interfaces.
+## Parar
 
 ```sh
-docker compose down        # keeps named volumes (data, Redis)
-docker compose down -v      # also removes the volumes
+docker compose down        # mantém os volumes nomeados (dados, Redis)
+docker compose down -v      # também remove os volumes
 ```
 
-## Environment variables
+## Variáveis de ambiente
 
-`.env.example` lists every variable grouped by service, with placeholder
-values. Groups:
+O `.env.example` lista cada variável agrupada por serviço, com valores de
+exemplo. Grupos:
 
-- Image tags: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`, `REDIS_TAG`,
-  `ORQUESTRADOR_TAG`, `ADAPTADOR_BAILEYS_TAG` (pinned to the currently published
-  versions, never `latest`; bump to a newer published build by setting the new
-  `sha-<short>` or semver).
+- Tags das imagens: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`, `REDIS_TAG`,
+  `ORQUESTRADOR_TAG`, `ADAPTADOR_BAILEYS_TAG` (fixadas nas versões publicadas
+  atualmente, nunca `latest`; atualize para um build publicado mais novo definindo
+  o novo `sha-<short>` ou semver).
 - banco-de-dados: `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`.
 - back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`.
 - front-end: `API_UPSTREAM`, `FRONTEND_HOST_PORT`.
@@ -166,8 +168,8 @@ values. Groups:
   `WEBHOOK_SECRET`, `CLOUD_API_PHONE_ID`, `CLOUD_API_TOKEN`, `CLOUD_API_APP_SECRET`,
   `CLOUD_API_VERIFY_TOKEN`, `CLOUD_API_GRAPH_VERSION`, `LLM_PROVIDER`,
   `GEMINI_API_KEY`, `GEMINI_MODEL`.
-- adaptador-baileys (profile `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
-  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL`, `DISCOVER_GROUPS` (plus
-  `ADAPTER_SECRET` and `WEBHOOK_SECRET`, shared with the orchestrator).
-- Local override only: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`, `NGROK_AUTHTOKEN`,
+- adaptador-baileys (perfil `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
+  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL`, `DISCOVER_GROUPS` (além de
+  `ADAPTER_SECRET` e `WEBHOOK_SECRET`, compartilhadas com o orquestrador).
+- Apenas no override local: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`, `NGROK_AUTHTOKEN`,
   `NGROK_UPSTREAM`, `NGROK_WEB_PORT`, `NGROK_WEB_BIND`, `NGROK_TAG`.
