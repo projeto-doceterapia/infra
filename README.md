@@ -35,9 +35,11 @@ Pulls the images at the tags set in `.env` and starts `banco-de-dados`,
 back-end and redis sit on the Docker-internal network `interna` (no host or
 internet reachability); the orchestrator is also on `interna` but joins the
 `saida` egress bridge for its outbound calls (LLM, Meta Cloud API). Only the
-front-end is on the host-facing `publica` network and publishes a port. In this
-default (Cloud API) mode no WhatsApp adapter runs; the orchestrator exposes its
-own webhook.
+front-end is on the host-facing `publica` network and publishes a port. Without
+the `baileys` profile no WhatsApp adapter runs; with `CHANNEL=baileys` (the
+default in `.env.example`) use the profile below. The `cloud_api` channel needs a
+public HTTPS route to the orchestrator's `/webhook`, which this stack does not
+publish; the only route provided is the development tunnel.
 
 ### WhatsApp via the Baileys adapter
 
@@ -58,13 +60,6 @@ docker compose --profile baileys logs -f adaptador-baileys
 
 Scan the printed QR with WhatsApp (Linked devices) on the assistant's phone. The
 session then persists in the volume, so later starts reconnect without a new QR.
-
-> Note: the full stack does not come up yet. The front-end waits for a healthy
-> back-end, and the back-end cannot become healthy against the currently
-> published database image, whose schema is behind the back-end entities. The
-> stack stays blocked until a database image with the corrected schema is
-> published; after that, only `BANCO_DE_DADOS_TAG` (and the matching
-> `BACK_END_TAG`) need to be bumped in `.env`.
 
 ### Develop a service locally
 
