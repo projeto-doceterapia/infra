@@ -181,6 +181,9 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:?set WEBHOOK_SECRET in .env}
       SESSION_DIR: ${BAILEYS_SESSION_DIR:?set BAILEYS_SESSION_DIR in .env}
       LOG_LEVEL: ${BAILEYS_LOG_LEVEL:?set BAILEYS_LOG_LEVEL in .env}
+      # Opt-in group discovery; defaults to false so existing .env files
+      # without the variable keep working.
+      DISCOVER_GROUPS: ${DISCOVER_GROUPS:-false}
     volumes:
       - adaptador-baileys-session:/data/session
     networks:
