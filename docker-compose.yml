@@ -14,8 +14,8 @@
 # internet; `publica` is a normal bridge that carries only host-facing
 # traffic; `saida` is an egress-only bridge for the assistant services that
 # need the internet. The front-end sits on `interna` + `publica` (publishes
-# its port and proxies to the back-end). orquestrador and adaptador-baileys
-# sit on `interna` + `saida` (in-stack traffic plus outbound internet).
+# its port and proxies to the back-end). orquestrador, adaptador-baileys and
+# ngrok sit on `interna` + `saida` (in-stack traffic plus outbound internet).
 
 name: doceterapia
 
@@ -131,7 +131,7 @@ services:
   # the `baileys` profile (below). Both sit on `interna` for in-stack traffic
   # (redis, back-end, each other) and on `saida` for the outbound internet
   # calls they need; in Cloud API mode the inbound webhook is exposed through
-  # the ngrok tunnel in compose.local.yml, so no host port is published here.
+  # the `tunnel` profile (ngrok, below), so no host port is published here.
   orquestrador:
     image: ghcr.io/projeto-doceterapia/orquestrador:${ORQUESTRADOR_TAG:?set ORQUESTRADOR_TAG in .env}
     restart: unless-stopped
@@ -179,6 +179,40 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # HTTPS tunnel to the orchestrator webhook (Cloud API channel). Starts only
+  # with `--profile tunnel`, on the account's fixed ngrok domain, which survives
+  # restarts so the webhook registered at Meta stays valid.
+  ngrok:
+    image: ngrok/ngrok:${NGROK_TAG:?set NGROK_TAG in .env}
+    profiles:
+      - tunnel
+    restart: unless-stopped
+    command:
+      - http
+      - --url=${NGROK_DOMAIN:?set NGROK_DOMAIN in .env}
+      - ${NGROK_UPSTREAM:-orquestrador:8000}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+    # ngrok's local inspection UI (unauthenticated; it shows request bodies).
+    # Bound to loopback by default; see NGROK_WEB_BIND in .env.example.
+    ports:
+      - "${NGROK_WEB_BIND:-127.0.0.1}:${NGROK_WEB_PORT:-4040}:4040"
+    networks:
+      # Dials out to the ngrok service over `saida` and forwards inbound
+      # requests to the orchestrator over the isolated `interna` network.
+      - saida
+      - interna
+    depends_on:
+      orquestrador:
+        condition: service_healthy
+    healthcheck:
+      # The agent API lists the endpoint only once it is online on the domain.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4040/api/tunnels | grep -q public_url"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # Baileys adapter: starts only with `--profile baileys`. Cloud API mode runs
   # without it. Keeps the WhatsApp session in a named volume and forwards
@@ -238,7 +272,7 @@ networks:
   # which publishes its port.
   publica:
     driver: bridge
-  # Egress-only bridge: gives the assistant services (orquestrador,
+  # Egress-only bridge: gives the assistant services (orquestrador, ngrok,
   # adaptador-baileys) outbound internet access without publishing any port,
   # while they stay on `interna` for in-stack traffic.
   saida:
