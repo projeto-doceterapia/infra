@@ -17,17 +17,91 @@ por padrão.
   ou recusam o `start_interval` dos health checks.
 - Um `.env` preenchido (veja abaixo). Nada mais no host.
 
+## Soft launcher (Windows)
+
+No Windows, o caminho recomendado é o atalho `doceterapia.cmd`, que precisa só do Docker
+Desktop: nada de editar arquivos à mão, instalar Node ou mudar a política de execução da
+máquina. Na pasta do `infra`:
+
+```bat
+doceterapia init
+doceterapia up
+```
+
+O `init` confere a máquina, cria o `.env` com segredos fortes e pergunta o e-mail e a senha
+da DONA (a senha não aparece na tela), se quer dados de demonstração, o canal do WhatsApp e
+os tokens externos; aperte Enter para adiar um token. O `up` sobe o sistema, confirma o
+primeiro acesso entrando com esses dados, apaga a senha do `.env` e mostra o endereço. O
+sistema web funciona com os tokens adiados; o assistente do WhatsApp só depois de
+preenchê-los com um novo `doceterapia init`. O perfil `tunnel` só entra quando
+`CHANNEL=cloud_api` e o token e o domínio do ngrok estão preenchidos; antes disso, um túnel
+sem credencial nunca ficaria saudável e impediria a subida.
+
+| Subcomando | O que faz |
+|---|---|
+| `doceterapia ajuda` | Lista os subcomandos. Dar dois cliques no atalho mostra esta lista |
+| `doceterapia doctor` | Confere PowerShell, Docker Engine 25+, Compose 2.20+, memória e portas, com a correção de cada problema |
+| `doceterapia init` | Cria ou completa o `.env`. Pode rodar de novo: nunca troca um segredo existente |
+| `doceterapia up` | Sobe tudo, confirma o primeiro acesso e mostra o endereço |
+| `doceterapia aplicar <serviço>` | Recria o serviço para valer uma mudança feita no `.env`. O `docker compose restart` não relê o `.env` |
+| `doceterapia down` | Para o sistema. Nunca apaga dados e recusa qualquer argumento |
+| `doceterapia backup` | Grava o banco e a sessão do WhatsApp em `backups\AAAA-MM-DD_HHmmss\` |
+| `doceterapia restore <pasta>` | Sem pasta, lista os backups. Com pasta, pede que se digite `RESTAURAR`, faz um backup de segurança e restaura |
+| `doceterapia atualizar` | Compara as tags do `.env.example` com as do `.env`, faz backup, troca as tags, acrescenta as variáveis novas, baixa as imagens e sobe |
+| `doceterapia logs <serviço>` | Acompanha o log do serviço. Sem nome, lista os serviços |
+| `doceterapia resetar-banco` | Pede que se digite `APAGAR`, faz backup e recria só o banco, perguntando de novo a DONA e os dados de demonstração |
+
+Qualquer subcomando aceita `-Simular`: mostra os comandos do Docker e as variáveis que
+mudariam, com os valores mascarados, sem executar nem gravar nada.
+
+Regras do launcher:
+
+- **Nunca roda `docker compose down -v`.** O único volume que ele apaga é o do banco, no
+  `resetar-banco`, depois do backup e da confirmação digitada. O volume do Redis e o da
+  sessão do WhatsApp ficam.
+- Um backup feito com outra versão pode não subir, porque o Flyway confere o checksum das
+  migrações. O `info.txt` de cada backup guarda as tags da época.
+- Se uma versão nova mudar a estrutura do banco, o `atualizar` para e aponta o
+  `resetar-banco`. Ele nunca recria o banco sozinho.
+- O `.env` fica em UTF-8 sem BOM e com fim de linha LF, com acesso só para o usuário atual.
+- O Windows pode bloquear um `.cmd` baixado da internet: em Propriedades do arquivo, marque
+  **Desbloquear**.
+
+| Código de saída | Significado |
+|---|---|
+| 0 | Sucesso |
+| 1 | Uso incorreto ou erro inesperado |
+| 2 | Pré-requisito ausente, como o Docker fechado |
+| 3 | `.env` ausente ou incompleto |
+| 4 | Um serviço não ficou saudável em 5 minutos |
+| 5 | Primeiro acesso não confirmado; a senha continua no `.env` |
+| 6 | Cancelado pela pessoa |
+| 7 | Falha de backup ou restauração |
+
+Os testes do launcher usam Pester 3.4.0, que já vem no Windows PowerShell 5.1:
+
+```bat
+powershell -NoProfile -Command "Import-Module Pester -RequiredVersion 3.4.0; Invoke-Pester -Path tests -EnableExit"
+```
+
+Para testar o launcher contra o Docker sem tocar nos volumes de uma instalação, copie a
+pasta para outro lugar e defina `COMPOSE_PROJECT_NAME` com outro nome: ele usa esse nome
+para localizar os volumes, como o Compose. Defina também outro `FRONTEND_HOST_PORT`.
+
 ## Comandos
 
-| Objetivo | Comando |
-|---|---|
-| Subir a pilha | `docker compose up -d` |
-| Subir com o túnel (canal `cloud_api`) | `docker compose --profile tunnel up -d` |
-| Subir com o adaptador (canal `baileys`) | `docker compose --profile baileys up -d` |
-| Ver o estado | `docker compose ps` |
-| Ver o uso de memória | `docker stats --no-stream` |
-| Parar sem apagar dados | `docker compose down` |
-| Recriar só o banco | veja [Recriar o banco](#recriar-o-banco) |
+Equivalentes em Docker Compose, para Linux ou para quem não usa o launcher:
+
+| Objetivo | Comando | No Windows |
+|---|---|---|
+| Subir a pilha | `docker compose up -d` | `doceterapia up` |
+| Subir com o túnel (canal `cloud_api`) | `docker compose --profile tunnel up -d` | `doceterapia up` |
+| Subir com o adaptador (canal `baileys`) | `docker compose --profile baileys up -d` | `doceterapia up` |
+| Aplicar uma mudança do `.env` | `docker compose up -d <serviço>` | `doceterapia aplicar <serviço>` |
+| Ver o estado | `docker compose ps` | |
+| Ver o uso de memória | `docker stats --no-stream` | |
+| Parar sem apagar dados | `docker compose down` | `doceterapia down` |
+| Recriar só o banco | veja [Recriar o banco](#recriar-o-banco) | `doceterapia resetar-banco` |
 
 ## Configuração
 
@@ -191,15 +265,19 @@ aplicação web e é publicada em todas as interfaces.
 
 ## Parar
 
+No Windows, use `doceterapia down`. Em outros ambientes:
+
 ```sh
 docker compose down        # mantém os volumes nomeados (banco, Redis, sessão do WhatsApp)
 ```
 
-Evite `docker compose down -v`: além do banco, ele apaga a fila do Redis e a sessão
-do WhatsApp, que exige parear o dispositivo de novo. Para recomeçar só o banco, use
+`docker compose down -v` **apaga tudo, sem volta**: além do banco, a fila do Redis e a
+sessão do WhatsApp, que exige parear o dispositivo de novo. Para recomeçar só o banco, use
 o procedimento abaixo.
 
 ## Recriar o banco
+
+No Windows, `doceterapia resetar-banco` faz os passos abaixo, com backup antes.
 
 O schema é criado pelas migrações Flyway do back-end na primeira subida de um banco
 vazio. Recrie o banco quando:
@@ -220,6 +298,9 @@ Procedimento:
    `docker compose logs back-end`.
 
 ## Checklist de subida
+
+No Windows, `doceterapia doctor`, `init` e `up` cobrem os passos 1 a 4 (o passo 3 só com o
+token e o domínio do ngrok preenchidos), e `doceterapia down` e `up`, o passo 7.
 
 1. `docker compose pull` com as tags do `.env`.
 2. Banco novo (procedimento acima), com `DEMO_DATA=true` e `ADMIN_EMAIL` e `ADMIN_SENHA`
@@ -244,7 +325,8 @@ exemplo. Grupos:
 - Tags das imagens: `BANCO_DE_DADOS_TAG`, `BACK_END_TAG`, `FRONT_END_TAG`, `REDIS_TAG`,
   `ORQUESTRADOR_TAG`, `ADAPTADOR_BAILEYS_TAG` (fixadas nas versões publicadas
   atualmente, nunca `latest`; atualize para um build publicado mais novo definindo
-  o novo `sha-<short>` ou semver).
+  o novo `sha-<short>` ou semver). `ALPINE_TAG` não entra no Compose: é a imagem
+  auxiliar que o launcher usa para empacotar o volume da sessão do WhatsApp.
 - banco-de-dados: `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`.
 - back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`,
   `ORQUESTRADOR_TOKEN`, `CORS_ALLOWED_ORIGINS`, `ADMIN_EMAIL`, `ADMIN_SENHA`,
