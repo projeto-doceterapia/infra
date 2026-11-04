@@ -195,6 +195,10 @@ aplicação web e é publicada em todas as interfaces.
 docker compose down        # mantém os volumes nomeados (banco, Redis, sessão do WhatsApp)
 ```
 
+Com o túnel ou o adaptador no ar, inclua o perfil (`--profile tunnel` ou
+`--profile baileys`): sem ele, o `down` deixa esse container rodando, e as redes dele
+continuam existindo.
+
 Evite `docker compose down -v`: além do banco, ele apaga a fila do Redis e a sessão
 do WhatsApp, que exige parear o dispositivo de novo. Para recomeçar só o banco, use
 o procedimento abaixo.
@@ -213,11 +217,12 @@ vazio. Recrie o banco quando:
 Procedimento:
 
 1. Se houver dados que importam, faça um backup antes.
-2. `docker compose down` (sem `-v`).
+2. `docker compose --profile tunnel --profile baileys down` (sem `-v`). Os dois perfis
+   fazem parar também o túnel e o adaptador, que um `down` sem perfil deixa rodando.
 3. `docker volume rm doceterapia_banco-de-dados-data`. Remove só o banco; o volume do
    Redis e o da sessão do WhatsApp ficam.
-4. `docker compose up -d` e confira `Successfully applied` em
-   `docker compose logs back-end`.
+4. `docker compose up -d`, com o `--profile` do seu canal (`tunnel` ou `baileys`), e
+   confira `Successfully applied` em `docker compose logs back-end`.
 
 ## Checklist de subida
 
@@ -232,7 +237,8 @@ Procedimento:
    devolve `123`. Depois, envie uma mensagem de teste pela Cloud API.
 6. Rode `docker stats --no-stream` três vezes durante o uso e anote o pico por serviço;
    revise o limite de quem passar de 90%.
-7. `docker compose down` e `docker compose up -d` de novo: os dados continuam lá.
+7. `docker compose --profile tunnel down` e `docker compose --profile tunnel up -d` de
+   novo: os dados continuam lá.
 8. Canal alternativo: `CHANNEL=baileys`, `ACCEPT_OWN_MESSAGES=true` e
    `docker compose --profile baileys up -d`.
 
