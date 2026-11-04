@@ -23,6 +23,7 @@ services:
   banco-de-dados:
     image: ghcr.io/projeto-doceterapia/banco-de-dados:${BANCO_DE_DADOS_TAG:?set BANCO_DE_DADOS_TAG in .env}
     restart: unless-stopped
+    mem_limit: 768m
     security_opt:
       - no-new-privileges:true
     environment:
@@ -44,6 +45,8 @@ services:
   back-end:
     image: ghcr.io/projeto-doceterapia/back-end:${BACK_END_TAG:?set BACK_END_TAG in .env}
     restart: unless-stopped
+    # The image sets the JVM heap to 75% of this limit (MaxRAMPercentage).
+    mem_limit: 768m
     security_opt:
       - no-new-privileges:true
     environment:
@@ -76,6 +79,7 @@ services:
   front-end:
     image: ghcr.io/projeto-doceterapia/front-end:${FRONT_END_TAG:?set FRONT_END_TAG in .env}
     restart: unless-stopped
+    mem_limit: 128m
     security_opt:
       - no-new-privileges:true
     environment:
@@ -102,7 +106,10 @@ services:
   redis:
     image: redis:${REDIS_TAG:?set REDIS_TAG in .env}
     restart: unless-stopped
-    # AOF persistence (everysec), no key eviction, password-protected.
+    mem_limit: 128m
+    # AOF persistence (everysec), no key eviction, password-protected. maxmemory
+    # stays below mem_limit so writes fail with an error before the kernel kills
+    # the container.
     command:
       - redis-server
       - --requirepass
@@ -111,6 +118,8 @@ services:
       - "yes"
       - --appendfsync
       - everysec
+      - --maxmemory
+      - 96mb
       - --maxmemory-policy
       - noeviction
     environment:
@@ -135,6 +144,7 @@ services:
   orquestrador:
     image: ghcr.io/projeto-doceterapia/orquestrador:${ORQUESTRADOR_TAG:?set ORQUESTRADOR_TAG in .env}
     restart: unless-stopped
+    mem_limit: 256m
     environment:
       CHANNEL: ${CHANNEL:?set CHANNEL in .env}
       BENEFICIARIA_TELEFONE: ${BENEFICIARIA_TELEFONE:?set BENEFICIARIA_TELEFONE in .env}
@@ -188,6 +198,7 @@ services:
     profiles:
       - tunnel
     restart: unless-stopped
+    mem_limit: 64m
     command:
       - http
       - --url=${NGROK_DOMAIN:?set NGROK_DOMAIN in .env}
@@ -222,6 +233,7 @@ services:
     profiles:
       - baileys
     restart: unless-stopped
+    mem_limit: 256m
     environment:
       GRUPO_JID: ${GRUPO_JID:?set GRUPO_JID in .env}
       ADAPTER_SECRET: ${ADAPTER_SECRET:?set ADAPTER_SECRET in .env}
