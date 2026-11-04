@@ -109,12 +109,20 @@ function ConvertTo-ValorLiteral {
 }
 
 function Set-PermissaoSoUsuario {
+    # Replaces the whole list instead of only cutting inheritance: in a folder
+    # without inheritable entries, such as some temp folders, a new file gets
+    # explicit entries for SYSTEM and Administrators from the process token.
     # Hardening only: a failure here must not stop the installation.
     param([Parameter(Mandatory = $true)][string]$Caminho)
-    $ErrorActionPreference = 'Continue'
-    $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    $null = & icacls.exe $Caminho /inheritance:r /grant:r "*${sid}:(F)" 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    try {
+        $usuario = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $acesso = New-Object System.Security.AccessControl.FileSecurity
+        $acesso.SetAccessRuleProtection($true, $false)
+        $regra = New-Object System.Security.AccessControl.FileSystemAccessRule($usuario, 'FullControl', 'Allow')
+        $acesso.AddAccessRule($regra)
+        [System.IO.File]::SetAccessControl($Caminho, $acesso)
+    }
+    catch {
         Write-Aviso 'Não foi possível restringir a permissão do arquivo de configuração ao usuário atual.'
     }
 }
