@@ -41,6 +41,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 40s
+      start_interval: 2s
 
   back-end:
     image: ghcr.io/projeto-doceterapia/back-end:${BACK_END_TAG:?set BACK_END_TAG in .env}
@@ -74,7 +75,10 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      # Long enough for the migrations and the demonstration data on a new
+      # database. start_interval reports healthy as soon as it is ready.
+      start_period: 120s
+      start_interval: 2s
 
   front-end:
     image: ghcr.io/projeto-doceterapia/front-end:${FRONT_END_TAG:?set FRONT_END_TAG in .env}
@@ -94,14 +98,17 @@ services:
       - publica
       - interna
     depends_on:
+      # nginx resolves the back-end per request, so the web app can come up
+      # first and serve the shell while the API finishes starting.
       back-end:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 5s
+      start_interval: 2s
 
   redis:
     image: redis:${REDIS_TAG:?set REDIS_TAG in .env}
@@ -134,6 +141,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+      start_interval: 2s
 
   # --- Assistant services --------------------------------------------------
   # orquestrador is a base service (always up). adaptador-baileys joins only on
@@ -189,6 +197,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+      start_interval: 2s
 
   # HTTPS tunnel to the orchestrator webhook (Cloud API channel). Starts only
   # with `--profile tunnel`, on the account's fixed ngrok domain, which survives
@@ -224,6 +233,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+      start_interval: 2s
 
   # Baileys adapter: starts only with `--profile baileys`. Cloud API mode runs
   # without it. Keeps the WhatsApp session in a named volume and forwards
@@ -266,6 +276,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+      start_interval: 2s
 
 volumes:
   banco-de-dados-data:
