@@ -21,6 +21,15 @@ segredos `replace-me` precisam ser preenchidos. Toda variável é obrigatória a
 menos que seu comentário diga que tem um padrão; uma ausente interrompe o
 `docker compose` com o nome da variável.
 
+Exceções a essa regra:
+
+- Opcionais com padrão seguro: `DISCOVER_GROUPS`, `ACCEPT_OWN_MESSAGES`,
+  `COOKIE_SECURE`, `SWAGGER_ENABLED` e `DEMO_DATA` assumem `false` quando ausentes.
+- Credenciais do primeiro usuário: `ADMIN_EMAIL` e `ADMIN_SENHA` podem ficar
+  vazias ou ausentes, porque só são lidas enquanto a tabela de usuários está vazia.
+- `CORS_ALLOWED_ORIGINS`: a linha precisa existir, mas o valor pode ser vazio,
+  já que a aplicação web acessa a API pela mesma origem, em `/api`.
+
 ## Modos
 
 ### Executar a pilha publicada (padrão)
@@ -36,8 +45,8 @@ back-end e o redis ficam na rede interna do Docker `interna` (sem alcance ao hos
 ou à internet); o orquestrador também está na `interna`, mas entra na ponte de
 saída `saida` para suas chamadas externas (LLM, Meta Cloud API). Apenas o
 front-end está na rede `publica`, voltada ao host, e publica uma porta. Sem o
-perfil `baileys` nenhum adaptador do WhatsApp executa; com `CHANNEL=baileys` (o
-padrão no `.env.example`) use o perfil abaixo. O canal `cloud_api` precisa de uma
+perfil `baileys` nenhum adaptador do WhatsApp executa; com `CHANNEL=baileys` use
+o perfil abaixo. O canal `cloud_api` (o padrão no `.env.example`) precisa de uma
 rota HTTPS pública para o `/webhook` do orquestrador, que esta pilha não publica;
 a única rota fornecida é o túnel de desenvolvimento.
 
@@ -159,17 +168,31 @@ exemplo. Grupos:
   atualmente, nunca `latest`; atualize para um build publicado mais novo definindo
   o novo `sha-<short>` ou semver).
 - banco-de-dados: `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`.
-- back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`.
+- back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`,
+  `ORQUESTRADOR_TOKEN`, `CORS_ALLOWED_ORIGINS`, `ADMIN_EMAIL`, `ADMIN_SENHA`,
+  `COOKIE_SECURE`, `SWAGGER_ENABLED`, `DEMO_DATA`.
 - front-end: `API_UPSTREAM`, `FRONTEND_HOST_PORT`.
 - redis: `REDIS_PASSWORD`.
-- orquestrador: `CHANNEL`, `BENEFICIARIA_TELEFONE`, `CORE_BASE_URL`,
+- orquestrador: `CHANNEL`, `BENEFICIARIA_TELEFONE`, `CORE_BASE_URL`, `ORQUESTRADOR_TOKEN`,
   `ORQUESTRADOR_REDIS_URL`, `CONV_TTL_MIN`, `MAX_AJUSTES`, `RETRY_MAX_TENTATIVAS`,
   `RETRY_BASE_S`, `RETRY_CAP_S`, `TZ`, `ADAPTER_URL`, `ADAPTER_SECRET`,
   `WEBHOOK_SECRET`, `CLOUD_API_PHONE_ID`, `CLOUD_API_TOKEN`, `CLOUD_API_APP_SECRET`,
   `CLOUD_API_VERIFY_TOKEN`, `CLOUD_API_GRAPH_VERSION`, `LLM_PROVIDER`,
   `GEMINI_API_KEY`, `GEMINI_MODEL`.
 - adaptador-baileys (perfil `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
-  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL`, `DISCOVER_GROUPS` (além de
+  `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL`, `DISCOVER_GROUPS`, `ACCEPT_OWN_MESSAGES` (além de
   `ADAPTER_SECRET` e `WEBHOOK_SECRET`, compartilhadas com o orquestrador).
 - Apenas no override local: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`, `NGROK_AUTHTOKEN`,
   `NGROK_UPSTREAM`, `NGROK_WEB_PORT`, `NGROK_WEB_BIND`, `NGROK_TAG`.
+
+Variáveis com regra própria e quem as recebe:
+
+| Variável | Serviço | Padrão | Para que serve |
+|---|---|---|---|
+| `ORQUESTRADOR_TOKEN` | `back-end`, `orquestrador` | obrigatória | Credencial de serviço do orquestrador nas rotas do back-end |
+| `CORS_ALLOWED_ORIGINS` | `back-end` | a linha é obrigatória; pode ser vazia | Origens cruzadas permitidas, separadas por vírgula |
+| `ADMIN_EMAIL`, `ADMIN_SENHA` | `back-end` | vazias | Primeiro usuário, criado só com a tabela de usuários vazia |
+| `COOKIE_SECURE` | `back-end` | `false` | Cookie de sessão só por HTTPS |
+| `SWAGGER_ENABLED` | `back-end` | `false` | Swagger UI e documentação da API no perfil `prod` |
+| `DEMO_DATA` | `back-end` | `false` | Dados fictícios de demonstração num banco novo; trocar depois exige recriar o banco |
+| `ACCEPT_OWN_MESSAGES` | `adaptador-baileys` | `false` | Modo de número único: processa as mensagens da própria conta pareada |
