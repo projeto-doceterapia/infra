@@ -88,6 +88,7 @@ services:
       - no-new-privileges:true
     environment:
       API_UPSTREAM: ${API_UPSTREAM:?set API_UPSTREAM in .env}
+      API_UPSTREAM_HOST: ${API_UPSTREAM_HOST:?set API_UPSTREAM_HOST in .env}
     ports:
       # Only the web app is published to the host. Container listens on 8080
       # (unprivileged nginx). Override FRONTEND_HOST_PORT only for local tests.
