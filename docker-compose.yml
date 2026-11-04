@@ -184,6 +184,9 @@ services:
       # Opt-in group discovery; defaults to false so existing .env files
       # without the variable keep working.
       DISCOVER_GROUPS: ${DISCOVER_GROUPS:-false}
+      # Single-number mode: treats messages sent by the paired account itself
+      # as inbound. Off by default, so only the fallback setup turns it on.
+      ACCEPT_OWN_MESSAGES: ${ACCEPT_OWN_MESSAGES:-false}
     volumes:
       - adaptador-baileys-session:/data/session
     networks:
