@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   compose-config:
-    name: Validate compose files
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
