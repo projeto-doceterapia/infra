@@ -54,3 +54,17 @@ jobs:
           cfg=$(docker compose -f docker-compose.yml --profile tunnel --profile baileys config --format json)
           echo "$cfg" | jq -e '[.services | to_entries[] | select(.value.image | test(":latest$|^[^:]+$")) | .key] | if length == 0 then true else error("unpinned image: \(.)") end'
           echo "$cfg" | jq -e '[.services | to_entries[] | select(.value.mem_limit == null) | .key] | if length == 0 then true else error("missing mem_limit: \(.)") end'
+
+  launcher-tests:
+    name: Launcher tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pester 3.4.0 ships with Windows PowerShell 5.1, the launcher's runtime.
+      - name: Run Pester
+        shell: powershell
+        run: |
+          Import-Module Pester -RequiredVersion 3.4.0
+          Invoke-Pester -Path tests -EnableExit

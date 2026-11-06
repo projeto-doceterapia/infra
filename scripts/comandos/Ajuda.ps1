@@ -1,0 +1,17 @@
+﻿function Invoke-ComandoAjuda {
+    Write-Texto 'Doceterapia: comandos disponíveis'
+    Write-Texto ''
+    Write-Texto '  doceterapia doctor            Verifica se o computador está pronto para o sistema.'
+    Write-Texto '  doceterapia init              Cria a configuração e pergunta o que falta.'
+    Write-Texto '  doceterapia up                Liga o sistema e mostra o endereço para abrir.'
+    Write-Texto '  doceterapia aplicar <serviço> Aplica ao serviço uma mudança feita na configuração.'
+    Write-Texto '  doceterapia down              Desliga o sistema sem apagar dados.'
+    Write-Texto '  doceterapia backup            Guarda uma cópia do banco e da sessão do WhatsApp.'
+    Write-Texto '  doceterapia restore <pasta>   Volta os dados de um backup; sem pasta, lista os backups.'
+    Write-Texto '  doceterapia atualizar         Faz backup e instala a versão nova.'
+    Write-Texto '  doceterapia logs <serviço>    Mostra os registros de um serviço; sem nome, lista os serviços.'
+    Write-Texto '  doceterapia resetar-banco     Faz backup e recria só o banco (Redis e WhatsApp ficam).'
+    Write-Texto '  doceterapia ajuda             Mostra esta lista.'
+    Write-Texto ''
+    Write-Texto 'Opção para qualquer comando: -Simular mostra o que seria feito, sem alterar nada.'
+}
