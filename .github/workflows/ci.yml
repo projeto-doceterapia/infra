@@ -42,3 +42,15 @@ jobs:
 
       - name: Validate base + local override
         run: docker compose -f docker-compose.yml -f compose.local.yml config --quiet
+
+      - name: Validate base with every profile
+        run: docker compose -f docker-compose.yml --profile tunnel --profile baileys config --quiet
+
+      - name: Validate base + local override with the tunnel profile
+        run: docker compose -f docker-compose.yml -f compose.local.yml --profile tunnel config --quiet
+
+      - name: Reject unpinned images and missing memory limits
+        run: |
+          cfg=$(docker compose -f docker-compose.yml --profile tunnel --profile baileys config --format json)
+          echo "$cfg" | jq -e '[.services | to_entries[] | select(.value.image | test(":latest$|^[^:]+$")) | .key] | if length == 0 then true else error("unpinned image: \(.)") end'
+          echo "$cfg" | jq -e '[.services | to_entries[] | select(.value.mem_limit == null) | .key] | if length == 0 then true else error("missing mem_limit: \(.)") end'

@@ -4,10 +4,30 @@ Ambiente Docker Compose do sistema Doceterapia. O único repositório necessári
 para executar a pilha: baixa imagens prontas e fixadas do GHCR e nunca faz build
 por padrão.
 
+## Ambientes suportados
+
+- Windows 10 ou 11 com Docker Desktop e WSL2, com pelo menos 8 GB de RAM. Os limites
+  de memória somam cerca de 2,1 GB, ou 2,4 GB com o adaptador Baileys.
+- Linux com Docker Engine, como alternativa.
+- Demonstração só com dados fictícios (`DEMO_DATA=true`).
+
 ## Requisitos
 
-- Docker com Compose v2.
+- Docker Engine 25 ou mais novo e Compose 2.20 ou mais novo. Versões antigas ignoram
+  ou recusam o `start_interval` dos health checks.
 - Um `.env` preenchido (veja abaixo). Nada mais no host.
+
+## Comandos
+
+| Objetivo | Comando |
+|---|---|
+| Subir a pilha | `docker compose up -d` |
+| Subir com o túnel (canal `cloud_api`) | `docker compose --profile tunnel up -d` |
+| Subir com o adaptador (canal `baileys`) | `docker compose --profile baileys up -d` |
+| Ver o estado | `docker compose ps` |
+| Ver o uso de memória | `docker stats --no-stream` |
+| Parar sem apagar dados | `docker compose down` |
+| Recriar só o banco | veja [Recriar o banco](#recriar-o-banco) |
 
 ## Configuração
 
@@ -46,15 +66,50 @@ ou à internet); o orquestrador também está na `interna`, mas entra na ponte d
 saída `saida` para suas chamadas externas (LLM, Meta Cloud API). Apenas o
 front-end está na rede `publica`, voltada ao host, e publica uma porta. Sem o
 perfil `baileys` nenhum adaptador do WhatsApp executa; com `CHANNEL=baileys` use
-o perfil abaixo. O canal `cloud_api` (o padrão no `.env.example`) precisa de uma
-rota HTTPS pública para o `/webhook` do orquestrador, que esta pilha não publica;
-a única rota fornecida é o túnel de desenvolvimento.
+esse perfil. O canal `cloud_api` (o padrão no `.env.example`) precisa de uma rota
+HTTPS pública para o `/webhook` do orquestrador, fornecida pelo perfil `tunnel`.
+
+Cada serviço tem um limite de memória (`mem_limit`):
+
+| Serviço | Limite |
+|---|---|
+| `banco-de-dados` | 768 MiB |
+| `back-end` | 768 MiB (a imagem reserva 75% para o heap da JVM) |
+| `front-end` | 128 MiB |
+| `redis` | 128 MiB, com `maxmemory` de 96 MiB |
+| `orquestrador` | 256 MiB |
+| `ngrok` (perfil `tunnel`) | 64 MiB |
+| `adaptador-baileys` (perfil `baileys`) | 256 MiB |
+
+### Túnel HTTPS (canal Cloud API)
+
+```sh
+docker compose --profile tunnel up -d
+```
+
+Inicia um túnel `ngrok` para o webhook do orquestrador (`NGROK_UPSTREAM`, padrão
+`orquestrador:8000`) no domínio fixo da conta (`NGROK_DOMAIN`), que não muda entre
+reinícios. Requer `NGROK_AUTHTOKEN` e `NGROK_DOMAIN`. Nada além do `docker-compose.yml`
+é necessário.
+
+Registre o webhook na Meta Cloud API usando a rota de entrada do orquestrador:
+
+```
+https://<NGROK_DOMAIN>/webhook
+```
+
+Use `CLOUD_API_VERIFY_TOKEN` como o verify token que a Meta envia no handshake GET.
+O túnel publica a porta inteira do `NGROK_UPSTREAM`, então essa porta não pode
+servir rotas internas.
 
 ### WhatsApp via o adaptador Baileys
 
 ```sh
 docker compose --profile baileys up
 ```
+
+Defina `CHANNEL=baileys` no `.env` e, no modo de número único (a conta pareada é
+também a remetente autorizada), `ACCEPT_OWN_MESSAGES=true`.
 
 Adiciona `adaptador-baileys` à pilha. Ele mantém a sessão do WhatsApp no volume
 nomeado `adaptador-baileys-session` (sobrevive ao `docker compose down`),
@@ -113,34 +168,16 @@ Para tornar essa porta publicada alcançável, ele também anexa o back-end à r
   está nela na pilha padrão (e o back-end quando o override local publica
   sua porta).
 - `saida`: ponte somente de saída. Carrega o tráfego externo de internet de
-  `orquestrador` e `adaptador-baileys` (e `ngrok` no override local);
-  estes também ficam na `interna` para o tráfego dentro da pilha. Não publica porta.
+  `orquestrador`, `ngrok` e `adaptador-baileys`; estes também ficam na `interna`
+  para o tráfego dentro da pilha. Não publica porta.
 - `front-end` está anexado a ambas: publica sua porta na `publica` e
   faz proxy de `/api` para o back-end pela `interna`.
 
-### Túnel HTTPS (testes de webhook da Cloud API)
-
-```sh
-docker compose -f docker-compose.yml -f compose.local.yml --profile tunnel up
-```
-
-Inicia um túnel `ngrok` para o webhook do orquestrador (`NGROK_UPSTREAM`, padrão
-`orquestrador:8000`); a URL HTTPS pública é exibida nos logs do `ngrok` e
-alcança o orquestrador pela rede interna. Requer `NGROK_AUTHTOKEN`.
-
-No modo `cloud_api`, registre o webhook na Meta Cloud API usando a rota de
-entrada do orquestrador, `/webhook`:
-
-```
-https://<ngrok-host>/webhook
-```
-
-Use `CLOUD_API_VERIFY_TOKEN` como o verify token que a Meta envia no handshake GET.
-
 ### Expor as portas locais
 
-As duas portas que o override local publica estão presas em `127.0.0.1` por
-padrão, então apenas a máquina que executa a pilha pode alcançá-las:
+A porta do back-end, publicada pelo override local, e a da UI de inspeção do
+ngrok, publicada pelo perfil `tunnel`, estão presas em `127.0.0.1` por padrão,
+então apenas a máquina que executa a pilha pode alcançá-las:
 
 | Variável | Porta | O que expõe |
 |---|---|---|
@@ -151,12 +188,59 @@ Em um servidor provisionado, defina a variável como `0.0.0.0` no `.env` para
 alcançar o painel de fora, e restrinja a porta com um firewall ou security group
 (permita apenas o seu próprio endereço). A porta do front-end não é afetada: é a
 aplicação web e é publicada em todas as interfaces.
+
 ## Parar
 
 ```sh
-docker compose down        # mantém os volumes nomeados (dados, Redis)
-docker compose down -v      # também remove os volumes
+docker compose down        # mantém os volumes nomeados (banco, Redis, sessão do WhatsApp)
 ```
+
+Com o túnel ou o adaptador no ar, inclua o perfil (`--profile tunnel` ou
+`--profile baileys`): sem ele, o `down` deixa esse container rodando, e as redes dele
+continuam existindo.
+
+Evite `docker compose down -v`: além do banco, ele apaga a fila do Redis e a sessão
+do WhatsApp, que exige parear o dispositivo de novo. Para recomeçar só o banco, use
+o procedimento abaixo.
+
+## Recriar o banco
+
+O schema é criado pelas migrações Flyway do back-end na primeira subida de um banco
+vazio. Recrie o banco quando:
+
+- trocar para imagens de `banco-de-dados` e `back-end` com Flyway (troque as duas
+  tags juntas: uma sem a outra deixa o banco sem schema ou com um schema que o Flyway
+  recusa);
+- a migração inicial for editada (o checksum deixa de bater);
+- o valor de `DEMO_DATA` mudar.
+
+Procedimento:
+
+1. Se houver dados que importam, faça um backup antes.
+2. `docker compose --profile tunnel --profile baileys down` (sem `-v`). Os dois perfis
+   fazem parar também o túnel e o adaptador, que um `down` sem perfil deixa rodando.
+3. `docker volume rm doceterapia_banco-de-dados-data`. Remove só o banco; o volume do
+   Redis e o da sessão do WhatsApp ficam.
+4. `docker compose up -d`, com o `--profile` do seu canal (`tunnel` ou `baileys`), e
+   confira `Successfully applied` em `docker compose logs back-end`.
+
+## Checklist de subida
+
+1. `docker compose pull` com as tags do `.env`.
+2. Banco novo (procedimento acima), com `DEMO_DATA=true` e `ADMIN_EMAIL` e `ADMIN_SENHA`
+   fictícios.
+3. `docker compose --profile tunnel up -d`; cronometre até todos ficarem `healthy` em
+   `docker compose ps`.
+4. Em `http://localhost:3000`, entre com o primeiro usuário e abra a Agenda com os dados
+   de demonstração.
+5. Confira o webhook pelo domínio fixo: `GET https://<NGROK_DOMAIN>/webhook?hub.mode=subscribe&hub.verify_token=<CLOUD_API_VERIFY_TOKEN>&hub.challenge=123`
+   devolve `123`. Depois, envie uma mensagem de teste pela Cloud API.
+6. Rode `docker stats --no-stream` três vezes durante o uso e anote o pico por serviço;
+   revise o limite de quem passar de 90%.
+7. `docker compose --profile tunnel down` e `docker compose --profile tunnel up -d` de
+   novo: os dados continuam lá.
+8. Canal alternativo: `CHANNEL=baileys`, `ACCEPT_OWN_MESSAGES=true` e
+   `docker compose --profile baileys up -d`.
 
 ## Variáveis de ambiente
 
@@ -171,7 +255,7 @@ exemplo. Grupos:
 - back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`,
   `ORQUESTRADOR_TOKEN`, `CORS_ALLOWED_ORIGINS`, `ADMIN_EMAIL`, `ADMIN_SENHA`,
   `COOKIE_SECURE`, `SWAGGER_ENABLED`, `DEMO_DATA`.
-- front-end: `API_UPSTREAM`, `FRONTEND_HOST_PORT`.
+- front-end: `API_UPSTREAM`, `API_UPSTREAM_HOST`, `FRONTEND_HOST_PORT`.
 - redis: `REDIS_PASSWORD`.
 - orquestrador: `CHANNEL`, `BENEFICIARIA_TELEFONE`, `CORE_BASE_URL`, `ORQUESTRADOR_TOKEN`,
   `ORQUESTRADOR_REDIS_URL`, `CONV_TTL_MIN`, `MAX_AJUSTES`, `RETRY_MAX_TENTATIVAS`,
@@ -182,8 +266,13 @@ exemplo. Grupos:
 - adaptador-baileys (perfil `baileys`): `GRUPO_JID`, `WEBHOOK_URL`,
   `BAILEYS_SESSION_DIR`, `BAILEYS_LOG_LEVEL`, `DISCOVER_GROUPS`, `ACCEPT_OWN_MESSAGES` (além de
   `ADAPTER_SECRET` e `WEBHOOK_SECRET`, compartilhadas com o orquestrador).
-- Apenas no override local: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`, `NGROK_AUTHTOKEN`,
-  `NGROK_UPSTREAM`, `NGROK_WEB_PORT`, `NGROK_WEB_BIND`, `NGROK_TAG`.
+- ngrok (perfil `tunnel`): `NGROK_TAG`, `NGROK_AUTHTOKEN`, `NGROK_DOMAIN`,
+  `NGROK_UPSTREAM`, `NGROK_WEB_PORT`, `NGROK_WEB_BIND`.
+- Apenas no override local: `BACK_END_HOST_PORT`, `BACK_END_HOST_BIND`.
+
+O Compose interpola o arquivo inteiro, então as variáveis obrigatórias dos perfis
+`tunnel` e `baileys` precisam existir mesmo sem o perfil ativo; o exemplo já traz
+todas com valor.
 
 Variáveis com regra própria e quem as recebe:
 
@@ -196,3 +285,5 @@ Variáveis com regra própria e quem as recebe:
 | `SWAGGER_ENABLED` | `back-end` | `false` | Swagger UI e documentação da API no perfil `prod` |
 | `DEMO_DATA` | `back-end` | `false` | Dados fictícios de demonstração num banco novo; trocar depois exige recriar o banco |
 | `ACCEPT_OWN_MESSAGES` | `adaptador-baileys` | `false` | Modo de número único: processa as mensagens da própria conta pareada |
+| `NGROK_DOMAIN` | `ngrok` | obrigatória | Domínio fixo da conta ngrok, sem o esquema |
+| `API_UPSTREAM_HOST` | `front-end` | obrigatória | Back-end como `host:porta`, para o `upstream` do nginx |
