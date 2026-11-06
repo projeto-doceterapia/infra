@@ -114,7 +114,7 @@ function Invoke-ComandoInit {
 
     $bancoExiste = Test-BancoExiste -Ctx $Ctx
     if ($Ctx.Simular) {
-        Write-Simulacao 'perguntaria e-mail e senha da DONA, dados de demonstração, canal, telefone e tokens externos.'
+        Write-Simulacao 'perguntaria nome, e-mail e senha da DONA, dados de demonstração, canal, telefone e tokens externos.'
     }
     else {
         Set-RespostasDoInit -Linhas $linhas -BancoExiste $bancoExiste

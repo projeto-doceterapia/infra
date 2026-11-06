@@ -7,7 +7,7 @@
 
     $linhas = Read-ConfiguracaoAtual -Ctx $Ctx
     if ($Ctx.Simular) {
-        Write-Simulacao 'pediria que a pessoa digitasse APAGAR, depois e-mail e senha da DONA e dados de demonstração.'
+        Write-Simulacao 'pediria que a pessoa digitasse APAGAR, depois nome, e-mail e senha da DONA e dados de demonstração.'
     }
     else {
         if ((Read-Entrada -Pergunta 'Para continuar, digite APAGAR') -cne 'APAGAR') {

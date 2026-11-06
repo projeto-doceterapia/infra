@@ -10,6 +10,7 @@ Describe 'resetar-banco' {
     Mock Get-IpLocal { $null }
     Mock Read-Entrada {
         if ($Pergunta -match 'APAGAR') { return 'APAGAR' }
+        if ($Pergunta -match 'Nome') { return 'Nova Fictícia' }
         if ($Pergunta -match 'E-mail') { return 'nova@exemplo.com' }
         if ($Pergunta -match 'demonstra') { return 'S' }
         return ''
@@ -49,6 +50,7 @@ Describe 'resetar-banco' {
 
         It 'aplica as novas respostas, apaga a senha após o login e mantém os segredos' {
             Read-ValorDoEnv -Ctx $ctx -Chave 'DEMO_DATA' | Should Be 'true'
+            Read-ValorDoEnv -Ctx $ctx -Chave 'ADMIN_NOME' | Should Be 'Nova Fictícia'
             Read-ValorDoEnv -Ctx $ctx -Chave 'ADMIN_EMAIL' | Should Be 'nova@exemplo.com'
             Read-ValorDoEnv -Ctx $ctx -Chave 'ADMIN_SENHA' | Should BeNullOrEmpty
             Read-ValorDoEnv -Ctx $ctx -Chave 'MYSQL_ROOT_PASSWORD' | Should Be $segredo
