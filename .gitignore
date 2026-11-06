@@ -1,5 +1,23 @@
 # Local environment with real secrets. Only .env.example is tracked.
 .env
-.env.tmp
 # Database dumps and WhatsApp sessions made by the launcher.
 backups/
+
+# Secrets and local environment
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# WhatsApp (Baileys) session data
+session/
+auth_info*/
+
+# Database dumps
+dumps/
+*.dump
+dump-*.sql
+*.sql.gz
+*.sql.zip
