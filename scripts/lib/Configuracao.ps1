@@ -74,8 +74,26 @@ function Test-SenhaDonaValida {
     return ($Senha.Length -ge 6 -and $Senha.Length -le 20 -and (Test-ValorDigitavel $Senha))
 }
 
+function Test-NomeDonaValido {
+    # Blank is valid: the back-end then uses its default name. The length range
+    # is the one the back-end enforces for the first user.
+    param([AllowEmptyString()][string]$Nome)
+    if (-not $Nome) { return $true }
+    return ($Nome.Length -ge 3 -and $Nome.Length -le 50 -and (Test-ValorDigitavel $Nome))
+}
+
+function Read-NomeDona {
+    for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
+        $digitado = "$(Read-Entrada -Pergunta 'Nome da DONA (Enter para usar Dona)')".Trim()
+        if (Test-NomeDonaValido $digitado) { return $digitado }
+        Write-Aviso 'O nome precisa ter de 3 a 50 caracteres, sem aspas simples e sem terminar com barra invertida.'
+    }
+    Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Nome não aceito. Rode o comando de novo.'
+}
+
 function Read-CredenciaisDona {
     # The caller keeps the result in memory and writes it together with the rest.
+    $nome = Read-NomeDona
     $email = $null
     for ($tentativa = 0; $tentativa -lt 3 -and -not $email; $tentativa++) {
         $digitado = "$(Read-Entrada -Pergunta 'E-mail da DONA')".Trim()
@@ -101,7 +119,7 @@ function Read-CredenciaisDona {
             Write-Aviso 'As senhas não são iguais.'
             continue
         }
-        return @{ Email = $email; Senha = $senha }
+        return @{ Nome = $nome; Email = $email; Senha = $senha }
     }
     Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Senha não aceita. Rode o comando de novo.'
 }
@@ -111,6 +129,8 @@ function Set-CredenciaisDona {
         [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas,
         [Parameter(Mandatory = $true)][hashtable]$Credenciais
     )
+    $nome = "$($Credenciais.Nome)"
+    Set-ValorEnv -Linhas $Linhas -Chave 'ADMIN_NOME' -Valor $(if ($nome) { ConvertTo-ValorLiteral $nome } else { '' })
     Set-ValorEnv -Linhas $Linhas -Chave 'ADMIN_EMAIL' -Valor $Credenciais.Email
     Set-ValorEnv -Linhas $Linhas -Chave 'ADMIN_SENHA' -Valor (ConvertTo-ValorLiteral $Credenciais.Senha)
 }

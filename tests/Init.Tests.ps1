@@ -8,6 +8,7 @@ Describe 'init' {
         return ''
     }
     Mock Read-Entrada {
+        if ($Pergunta -match 'Nome') { return 'Maria Fictícia' }
         if ($Pergunta -match 'E-mail') { return 'dona@exemplo.com' }
         if ($Pergunta -match 'demonstra') { return 'S' }
         return ''
@@ -42,7 +43,8 @@ Describe 'init' {
             Get-ValorEnv -Linhas $linhas -Chave 'ORQUESTRADOR_REDIS_URL' | Should Be "redis://:$redis@redis:6379/0"
         }
 
-        It 'grava e-mail, senha entre aspas e dados de demonstração' {
+        It 'grava nome, e-mail, senha entre aspas e dados de demonstração' {
+            Get-ValorEnv -Linhas $linhas -Chave 'ADMIN_NOME' | Should Be 'Maria Fictícia'
             Get-ValorEnv -Linhas $linhas -Chave 'ADMIN_EMAIL' | Should Be 'dona@exemplo.com'
             Get-ValorEnv -Linhas $linhas -Chave 'ADMIN_SENHA' | Should Be $SENHA_FICTICIA
             ($linhas -ccontains "ADMIN_SENHA='$SENHA_FICTICIA'") | Should Be $true
@@ -160,6 +162,32 @@ Describe 'validação das respostas' {
         }
         (Read-CredenciaisDona).Senha | Should Be 'SenhaFicticia1'
         Assert-MockCalled Read-SenhaOculta -Times 4 -Exactly -Scope It
+    }
+
+    It 'aceita nome em branco e recusa nome curto, longo ou com aspa' {
+        Test-NomeDonaValido '' | Should Be $true
+        Test-NomeDonaValido 'Ana' | Should Be $true
+        Test-NomeDonaValido 'Al' | Should Be $false
+        Test-NomeDonaValido ('x' * 51) | Should Be $false
+        Test-NomeDonaValido "D'Ávila" | Should Be $false
+    }
+
+    It 'pergunta o nome de novo quando ele é recusado e desiste após três tentativas' {
+        Mock Read-Entrada { 'Al' }
+        { Read-NomeDona } | Should Throw 'Nome não aceito'
+        Assert-MockCalled Read-Entrada -Times 3 -Exactly -Scope It
+    }
+
+    It 'deixa ADMIN_NOME vazio quando o nome não é digitado' {
+        $linhas = New-ListaLinhas
+        Set-CredenciaisDona -Linhas $linhas -Credenciais @{ Nome = ''; Email = 'dona@exemplo.com'; Senha = 'SenhaFicticia1' }
+        Get-ValorEnv -Linhas $linhas -Chave 'ADMIN_NOME' | Should BeNullOrEmpty
+    }
+
+    It 'grava o nome entre aspas simples' {
+        $linhas = New-ListaLinhas
+        Set-CredenciaisDona -Linhas $linhas -Credenciais @{ Nome = 'Maria $ Fictícia'; Email = 'dona@exemplo.com'; Senha = 'SenhaFicticia1' }
+        ($linhas -ccontains "ADMIN_NOME='Maria `$ Fictícia'") | Should Be $true
     }
 
     It 'valida o e-mail' {

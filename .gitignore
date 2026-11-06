@@ -1,6 +1,5 @@
 # Local environment with real secrets. Only .env.example is tracked.
 .env
-.env.tmp
 # Database dumps and WhatsApp sessions made by the launcher.
 backups/
 
