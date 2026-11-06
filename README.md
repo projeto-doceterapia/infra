@@ -28,8 +28,8 @@ doceterapia init
 doceterapia up
 ```
 
-O `init` confere a máquina, cria o `.env` com segredos fortes e pergunta o e-mail e a senha
-da DONA (a senha não aparece na tela), se quer dados de demonstração, o canal do WhatsApp e
+O `init` confere a máquina, cria o `.env` com segredos fortes e pergunta o nome (opcional, `Dona` se
+em branco), o e-mail e a senha da DONA (a senha não aparece na tela), se quer dados de demonstração, o canal do WhatsApp e
 os tokens externos; aperte Enter para adiar um token. O `up` sobe o sistema, confirma o
 primeiro acesso entrando com esses dados, apaga a senha do `.env` e mostra o endereço. O
 sistema web funciona com os tokens adiados; o assistente do WhatsApp só depois de
@@ -49,7 +49,7 @@ sem credencial nunca ficaria saudável e impediria a subida.
 | `doceterapia restore <pasta>` | Sem pasta, lista os backups. Com pasta, pede que se digite `RESTAURAR`, faz um backup de segurança e restaura |
 | `doceterapia atualizar` | Compara as tags do `.env.example` com as do `.env`, faz backup, troca as tags, acrescenta as variáveis novas, baixa as imagens e sobe |
 | `doceterapia logs <serviço>` | Acompanha o log do serviço. Sem nome, lista os serviços |
-| `doceterapia resetar-banco` | Pede que se digite `APAGAR`, faz backup e recria só o banco, perguntando de novo a DONA e os dados de demonstração |
+| `doceterapia resetar-banco` | Pede que se digite `APAGAR`, faz backup e recria só o banco, perguntando de novo o nome, o e-mail e a senha da DONA e os dados de demonstração |
 
 Qualquer subcomando aceita `-Simular`: mostra os comandos do Docker e as variáveis que
 mudariam, com os valores mascarados, sem executar nem gravar nada.
@@ -119,8 +119,9 @@ Exceções a essa regra:
 
 - Opcionais com padrão seguro: `DISCOVER_GROUPS`, `ACCEPT_OWN_MESSAGES`,
   `COOKIE_SECURE`, `SWAGGER_ENABLED` e `DEMO_DATA` assumem `false` quando ausentes.
-- Credenciais do primeiro usuário: `ADMIN_EMAIL` e `ADMIN_SENHA` podem ficar
-  vazias ou ausentes, porque só são lidas enquanto a tabela de usuários está vazia.
+- Dados do primeiro usuário: `ADMIN_NOME`, `ADMIN_EMAIL` e `ADMIN_SENHA` podem ficar
+  vazios ou ausentes, porque só são lidos enquanto a tabela de usuários está vazia.
+  Com `ADMIN_NOME` em branco ou ausente, o nome do usuário é `Dona`.
 - `CORS_ALLOWED_ORIGINS`: a linha precisa existir, mas o valor pode ser vazio,
   já que a aplicação web acessa a API pela mesma origem, em `/api`.
 
@@ -255,7 +256,7 @@ então apenas a máquina que executa a pilha pode alcançá-las:
 
 | Variável | Porta | O que expõe |
 |---|---|---|
-| `BACK_END_HOST_BIND` | `BACK_END_HOST_PORT` (8080) | API do back-end e Swagger UI; as rotas de negócio não têm autenticação |
+| `BACK_END_HOST_BIND` | `BACK_END_HOST_PORT` (8080) | API do back-end e Swagger UI; as rotas de negócio exigem sessão ou a credencial do orquestrador |
 | `NGROK_WEB_BIND` | `NGROK_WEB_PORT` (4040) | UI de inspeção do ngrok; mostra corpos de requisição e assinaturas, sem autenticação |
 
 Em um servidor provisionado, defina a variável como `0.0.0.0` no `.env` para
@@ -308,8 +309,8 @@ No Windows, `doceterapia doctor`, `init` e `up` cobrem os passos 1 a 4 (o passo 
 token e o domínio do ngrok preenchidos), e `doceterapia down` e `up`, o passo 7.
 
 1. `docker compose pull` com as tags do `.env`.
-2. Banco novo (procedimento acima), com `DEMO_DATA=true` e `ADMIN_EMAIL` e `ADMIN_SENHA`
-   fictícios.
+2. Banco novo (procedimento acima), com `DEMO_DATA=true` e `ADMIN_NOME`, `ADMIN_EMAIL` e
+   `ADMIN_SENHA` fictícios.
 3. `docker compose --profile tunnel up -d`; cronometre até todos ficarem `healthy` em
    `docker compose ps`.
 4. Em `http://localhost:3000`, entre com o primeiro usuário e abra a Agenda com os dados
@@ -335,7 +336,7 @@ exemplo. Grupos:
   auxiliar que o launcher usa para empacotar o volume da sessão do WhatsApp.
 - banco-de-dados: `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`.
 - back-end: `SPRING_PROFILES_ACTIVE`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`,
-  `ORQUESTRADOR_TOKEN`, `CORS_ALLOWED_ORIGINS`, `ADMIN_EMAIL`, `ADMIN_SENHA`,
+  `ORQUESTRADOR_TOKEN`, `CORS_ALLOWED_ORIGINS`, `ADMIN_NOME`, `ADMIN_EMAIL`, `ADMIN_SENHA`,
   `COOKIE_SECURE`, `SWAGGER_ENABLED`, `DEMO_DATA`.
 - front-end: `API_UPSTREAM`, `API_UPSTREAM_HOST`, `FRONTEND_HOST_PORT`.
 - redis: `REDIS_PASSWORD`.
@@ -362,7 +363,7 @@ Variáveis com regra própria e quem as recebe:
 |---|---|---|---|
 | `ORQUESTRADOR_TOKEN` | `back-end`, `orquestrador` | obrigatória | Credencial de serviço do orquestrador nas rotas do back-end |
 | `CORS_ALLOWED_ORIGINS` | `back-end` | a linha é obrigatória; pode ser vazia | Origens cruzadas permitidas, separadas por vírgula |
-| `ADMIN_EMAIL`, `ADMIN_SENHA` | `back-end` | vazias | Primeiro usuário, criado só com a tabela de usuários vazia |
+| `ADMIN_NOME`, `ADMIN_EMAIL`, `ADMIN_SENHA` | `back-end` | vazias | Primeiro usuário, criado só com a tabela de usuários vazia; nome em branco gera `Dona` (3 a 50 caracteres), senha de 6 a 20 caracteres |
 | `COOKIE_SECURE` | `back-end` | `false` | Cookie de sessão só por HTTPS |
 | `SWAGGER_ENABLED` | `back-end` | `false` | Swagger UI e documentação da API no perfil `prod` |
 | `DEMO_DATA` | `back-end` | `false` | Dados fictícios de demonstração num banco novo; trocar depois exige recriar o banco |
