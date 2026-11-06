@@ -2,6 +2,12 @@
 # only; it never builds. Copy .env.example to .env and fill it before use.
 # Every variable is passed explicitly per service (no shared env_file) and is
 # required (${VAR:?message}) so a missing value stops compose with its name.
+# Exceptions use ${VAR:-default}: optional settings with a safe default
+# (DISCOVER_GROUPS, ACCEPT_OWN_MESSAGES, COOKIE_SECURE, SWAGGER_ENABLED,
+# DEMO_DATA) and the bootstrap credentials (ADMIN_EMAIL, ADMIN_SENHA), which are
+# removed from .env after the first start. CORS_ALLOWED_ORIGINS uses
+# ${VAR?message}: the line must exist, but empty is valid because the web app
+# reaches the API on its own origin through /api.
 #
 # Networks: `interna` is Docker-internal (internal: true) and holds the
 # database, back-end and redis, so none is reachable from the host nor the
@@ -46,6 +52,15 @@ services:
       DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
       DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ORQUESTRADOR_TOKEN: ${ORQUESTRADOR_TOKEN:?set ORQUESTRADOR_TOKEN in .env}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS?set CORS_ALLOWED_ORIGINS in .env (may be empty)}
+      # Bootstrap credentials: read only while the user table is empty and
+      # removed from .env after the first sign-in, so they must stay optional.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_SENHA: ${ADMIN_SENHA:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      DEMO_DATA: ${DEMO_DATA:-false}
     networks:
       - interna
     depends_on:
@@ -125,6 +140,8 @@ services:
       BENEFICIARIA_TELEFONE: ${BENEFICIARIA_TELEFONE:?set BENEFICIARIA_TELEFONE in .env}
       # Reaches the core on the internal network.
       CORE_BASE_URL: ${CORE_BASE_URL:?set CORE_BASE_URL in .env}
+      # Service credential for the back-end routes the assistant calls.
+      ORQUESTRADOR_TOKEN: ${ORQUESTRADOR_TOKEN:?set ORQUESTRADOR_TOKEN in .env}
       REDIS_URL: ${ORQUESTRADOR_REDIS_URL:?set ORQUESTRADOR_REDIS_URL in .env}
       CONV_TTL_MIN: ${CONV_TTL_MIN:?set CONV_TTL_MIN in .env}
       MAX_AJUSTES: ${MAX_AJUSTES:?set MAX_AJUSTES in .env}
@@ -184,6 +201,9 @@ services:
       # Opt-in group discovery; defaults to false so existing .env files
       # without the variable keep working.
       DISCOVER_GROUPS: ${DISCOVER_GROUPS:-false}
+      # Single-number mode: treats messages sent by the paired account itself
+      # as inbound. Off by default, so only the fallback setup turns it on.
+      ACCEPT_OWN_MESSAGES: ${ACCEPT_OWN_MESSAGES:-false}
     volumes:
       - adaptador-baileys-session:/data/session
     networks:
