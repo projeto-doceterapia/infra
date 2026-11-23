@@ -101,6 +101,14 @@ function Invoke-SubidaCompleta {
     $linhas = Read-ConfiguracaoAtual -Ctx $Ctx
     Write-AvisosAssistente -Linhas $linhas
     Write-EnderecosDoSistema -Linhas $linhas
+    $atalho = New-AtalhoSistema -Ctx $Ctx -Url "http://localhost:$(Get-PortaFrontEnd -Linhas $linhas)"
+    if ($atalho -and (Test-InterfaceGrafica)) {
+        $resumo = Get-ResumoDaSessao
+        Clear-ResumoDaSessao
+        if (Read-SimNao -Pergunta "$resumo`n`nO atalho Doceterapia está na Área de Trabalho. Abrir o sistema agora?") {
+            Start-Process -FilePath $atalho
+        }
+    }
 }
 
 function Invoke-ComandoUp {

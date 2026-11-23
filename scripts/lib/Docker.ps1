@@ -26,6 +26,9 @@ function New-ContextoLauncher {
         CaminhoExemplo = Join-Path $Raiz '.env.example'
         CaminhoCompose = Join-Path $Raiz 'docker-compose.yml'
         PastaBackups   = Join-Path $Raiz 'backups'
+        CaminhoIcone   = Join-Path $Raiz 'assets\doceterapia.ico'
+        PastaAtalho    = [Environment]::GetFolderPath('Desktop')
+        PastaPerfilNavegador = Join-Path $env:LOCALAPPDATA 'Doceterapia\navegador'
         Projeto        = Get-NomeProjeto -CaminhoEnv $caminhoEnv
         Simular        = $false
     }

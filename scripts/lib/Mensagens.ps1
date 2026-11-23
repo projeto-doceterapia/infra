@@ -23,19 +23,33 @@ function Stop-Launcher {
     throw $erro
 }
 
+$script:ResumoDaSessao = New-Object 'System.Collections.Generic.List[string]'
+
 function Write-Texto {
+    # With the dialogs on, the text is also kept to be shown when the command ends.
     param([string]$Texto = '')
     Write-Host $Texto
+    if (Test-InterfaceGrafica) { $script:ResumoDaSessao.Add($Texto) }
+}
+
+function Get-ResumoDaSessao {
+    return (($script:ResumoDaSessao -join "`n").Trim())
+}
+
+function Clear-ResumoDaSessao {
+    $script:ResumoDaSessao.Clear()
 }
 
 function Write-Erro {
     param([string]$Texto)
     Write-Host $Texto -ForegroundColor Red
+    if (Test-InterfaceGrafica) { Show-Mensagem -Texto $Texto -Tipo Erro }
 }
 
 function Write-Aviso {
     param([string]$Texto)
     Write-Host $Texto -ForegroundColor Yellow
+    if (Test-InterfaceGrafica) { Show-Mensagem -Texto $Texto -Tipo Aviso }
 }
 
 function Write-Simulacao {
@@ -52,6 +66,7 @@ function Assert-SemArgumentos {
 
 function Read-Entrada {
     param([Parameter(Mandatory = $true)][string]$Pergunta)
+    if (Test-InterfaceGrafica) { return (Show-CaixaEntrada -Pergunta $Pergunta) }
     return (Read-Host $Pergunta)
 }
 
@@ -60,6 +75,7 @@ function Read-SimNao {
         [Parameter(Mandatory = $true)][string]$Pergunta,
         [bool]$Padrao = $false
     )
+    if (Test-InterfaceGrafica) { return (Show-PerguntaSimNao -Pergunta $Pergunta) }
     for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
         $resposta = "$(Read-Entrada -Pergunta "$Pergunta (S/N)")".Trim()
         if ($resposta -match '^(s|sim)$') { return $true }
@@ -76,7 +92,9 @@ function Wait-Intervalo {
 }
 
 function Wait-Enter {
-    # Keeps the window open on a double click. Hosts without input just continue.
+    # Keeps the console open on a double click. Dialogs need no pause, and hosts
+    # without input just continue.
+    if (Test-InterfaceGrafica) { return }
     try {
         $null = Read-Host 'Pressione Enter para fechar'
     }

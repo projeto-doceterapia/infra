@@ -4,11 +4,26 @@
 
 $ErrorActionPreference = 'Stop'
 
-foreach ($biblioteca in 'Mensagens', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao') {
+foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho') {
     . (Join-Path $PSScriptRoot "lib\$biblioteca.ps1")
 }
 foreach ($arquivoComando in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'comandos') -Filter '*.ps1') {
     . $arquivoComando.FullName
+}
+
+function Invoke-MenuPrincipal {
+    # Each choice runs like the subcommand of the same name; the menu comes back
+    # until the window is closed.
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    while ($comando = Show-MenuPrincipal) {
+        $argumentos = @($comando)
+        if ($comando -eq 'restore') {
+            $pasta = Select-PastaBackup -Ctx $Ctx
+            if (-not $pasta) { continue }
+            $argumentos += $pasta
+        }
+        $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos $argumentos
+    }
 }
 
 function Invoke-Doceterapia {
@@ -17,6 +32,7 @@ function Invoke-Doceterapia {
         [hashtable]$Ctx
     )
 
+    Clear-ResumoDaSessao
     try {
         $simular = @($Argumentos | Where-Object { $_ -ieq '-Simular' }).Count -gt 0
         $resto = @($Argumentos | Where-Object { $_ -ine '-Simular' })
@@ -27,6 +43,10 @@ function Invoke-Doceterapia {
         $Ctx.Simular = $simular
 
         if ($resto.Count -eq 0) {
+            if (Test-InterfaceGrafica) {
+                Invoke-MenuPrincipal -Ctx $Ctx
+                return $CODIGO_SUCESSO
+            }
             Invoke-ComandoAjuda
             Wait-Enter
             return $CODIGO_SUCESSO
@@ -40,6 +60,7 @@ function Invoke-Doceterapia {
             'doctor' { Assert-SemArgumentos $extras; $null = Invoke-ComandoDoctor -Ctx $Ctx }
             'init' { Assert-SemArgumentos $extras; $null = Invoke-ComandoInit -Ctx $Ctx }
             'up' { Assert-SemArgumentos $extras; $null = Invoke-ComandoUp -Ctx $Ctx }
+            'abrir' { Assert-SemArgumentos $extras; Invoke-AbrirSistema -Ctx $Ctx }
             'aplicar' { $null = Invoke-ComandoAplicar -Ctx $Ctx -Extras $extras }
             'down' { $null = Invoke-ComandoDown -Ctx $Ctx -Extras $extras }
             'backup' { Assert-SemArgumentos $extras; $null = Invoke-ComandoBackup -Ctx $Ctx }
@@ -48,6 +69,10 @@ function Invoke-Doceterapia {
             'logs' { $null = Invoke-ComandoLogs -Ctx $Ctx -Extras $extras }
             'resetar-banco' { Assert-SemArgumentos $extras; $null = Invoke-ComandoResetarBanco -Ctx $Ctx }
             default { Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Comando desconhecido. Rode: doceterapia ajuda' }
+        }
+        $resumo = Get-ResumoDaSessao
+        if ($resumo -and (Test-InterfaceGrafica)) {
+            Show-Mensagem -Texto $resumo
         }
         return $CODIGO_SUCESSO
     }
@@ -77,5 +102,6 @@ if ($MyInvocation.InvocationName -ne '.') {
     catch {
         Write-Verbose 'No console to configure.'
     }
+    Enable-InterfaceGrafica
     exit (Invoke-Doceterapia -Argumentos $args)
 }
