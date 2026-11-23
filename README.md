@@ -39,7 +39,8 @@ sem credencial nunca ficaria saudável e impediria a subida.
 
 | Subcomando | O que faz |
 |---|---|
-| `doceterapia ajuda` | Lista os subcomandos. Dar dois cliques no atalho mostra esta lista |
+| `doceterapia ajuda` | Lista os subcomandos |
+| `doceterapia abrir` | Abre o sistema pelo atalho da Área de Trabalho |
 | `doceterapia doctor` | Confere PowerShell, Docker Engine 25+, Compose 2.20+, memória e portas, com a correção de cada problema |
 | `doceterapia init` | Cria ou completa o `.env`. Pode rodar de novo: nunca troca um segredo existente |
 | `doceterapia up` | Sobe tudo, confirma o primeiro acesso e mostra o endereço |
@@ -50,6 +51,20 @@ sem credencial nunca ficaria saudável e impediria a subida.
 | `doceterapia atualizar` | Compara as tags do `.env.example` com as do `.env`, faz backup, troca as tags, acrescenta as variáveis novas, baixa as imagens e sobe |
 | `doceterapia logs <serviço>` | Acompanha o log do serviço. Sem nome, lista os serviços |
 | `doceterapia resetar-banco` | Pede que se digite `APAGAR`, faz backup e recria só o banco, perguntando de novo o nome, o e-mail e a senha da DONA e os dados de demonstração |
+
+### Janelas do Windows e atalho do sistema
+
+Dar dois cliques em `doceterapia.cmd` abre um menu com as ações principais (verificar, configurar,
+ligar, abrir, desligar, backup, restaurar, atualizar e recriar o banco). Todas as perguntas, avisos
+e erros aparecem em janelas nativas do Windows; as senhas e os tokens ficam ocultos na caixa de
+texto. Para restaurar, uma janela pede a pasta do backup. A janela do console continua aberta só
+para mostrar o andamento do Docker.
+
+Quando o sistema fica no ar (`up`, `atualizar`, `resetar-banco`), o launcher cria o atalho
+`Doceterapia` na Área de Trabalho, com o ícone de `assets\doceterapia.ico`. Ele abre o sistema no
+Microsoft Edge (ou no Google Chrome, se não houver Edge) em modo aplicativo: uma janela própria, sem
+abas nem barra de endereço, com um perfil separado em `%LOCALAPPDATA%\Doceterapia\navegador`.
+Sem Edge nem Chrome, o launcher avisa e mostra o endereço para abrir no navegador.
 
 Qualquer subcomando aceita `-Simular`: mostra os comandos do Docker e as variáveis que
 mudariam, com os valores mascarados, sem executar nem gravar nada.
