@@ -71,6 +71,7 @@ function Invoke-Doceterapia {
                 'init' { Assert-SemArgumentos $extras; $null = Invoke-ComandoInit -Ctx $Ctx }
                 'up' { Assert-SemArgumentos $extras; $null = Invoke-ComandoUp -Ctx $Ctx }
                 'abrir' { Assert-SemArgumentos $extras; Invoke-AbrirSistema -Ctx $Ctx }
+                'criar-atalhos' { Assert-SemArgumentos $extras; Invoke-ComandoCriarAtalhos -Ctx $Ctx }
                 'aplicar' { $null = Invoke-ComandoAplicar -Ctx $Ctx -Extras $extras }
                 'down' { $null = Invoke-ComandoDown -Ctx $Ctx -Extras $extras }
                 'backup' { Assert-SemArgumentos $extras; $null = Invoke-ComandoBackup -Ctx $Ctx }

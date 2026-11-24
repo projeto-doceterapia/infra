@@ -18,7 +18,8 @@ $OPCOES_MENU = @(
     @{ Rotulo = 'Fazer backup'; Comando = 'backup' },
     @{ Rotulo = 'Restaurar um backup'; Comando = 'restore' },
     @{ Rotulo = 'Atualizar'; Comando = 'atualizar' },
-    @{ Rotulo = 'Verificar o computador'; Comando = 'doctor' }
+    @{ Rotulo = 'Verificar o computador'; Comando = 'doctor' },
+    @{ Rotulo = 'Criar atalhos'; Comando = 'criar-atalhos' }
 )
 $OPCAO_PERIGOSA = @{ Rotulo = 'Apagar e recriar o banco'; Comando = 'resetar-banco' }
 $OPCAO_ABRIR = @{ Rotulo = 'Abrir sistema'; Comando = 'abrir' }
