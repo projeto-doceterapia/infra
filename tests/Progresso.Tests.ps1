@@ -52,14 +52,14 @@ Describe 'janela de progresso' {
         $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'acao')
 
         It 'termina com Concluído quando o comando dá certo' {
-            $resultado = Invoke-AcaoComProgresso -Ctx $ctx -Titulo 'Ajuda' -Argumentos @('ajuda') 6>$null
+            $resultado = Invoke-AcaoComProgresso -Titulo 'Ajuda' -Acao { Invoke-Doceterapia -Ctx $ctx -Argumentos @('ajuda') } 6>$null
             $resultado.Codigo | Should Be 0
             $global:EstadoFinal.Etapa | Should Be 'Concluído.'
             $global:EstadoFinal.Sucesso | Should Be $true
         }
 
         It 'termina com a mensagem de erro do comando' {
-            $resultado = Invoke-AcaoComProgresso -Ctx $ctx -Titulo 'Teste' -Argumentos @('xyz') 6>$null
+            $resultado = Invoke-AcaoComProgresso -Titulo 'Teste' -Acao { Invoke-Doceterapia -Ctx $ctx -Argumentos @('xyz') } 6>$null
             $resultado.Codigo | Should Be 1
             $global:EstadoFinal.Etapa | Should Match 'Comando desconhecido'
             $global:EstadoFinal.Sucesso | Should Be $false
