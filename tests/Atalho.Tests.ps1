@@ -49,17 +49,30 @@ Describe 'atalho do sistema' {
         Mock Start-Process { }
         $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'abrir')
 
-        It 'sem atalho, pede para ligar o sistema' {
+        It 'com o sistema parado, pede para ligar' {
+            Mock Test-SistemaRespondendo { $false }
             $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
-            $resultado.Codigo | Should Be 3
+            $resultado.Codigo | Should Be 2
+            $resultado.Texto | Should Match 'não está respondendo'
             Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
         }
 
-        It 'com atalho, abre o atalho' {
-            Set-Content -LiteralPath (Join-Path $ctx.PastaAtalho 'Doceterapia.lnk') -Value ''
+        It 'com o sistema no ar, abre a janela de aplicativo na porta configurada' {
+            Mock Test-SistemaRespondendo { $true }
+            Mock Get-CaminhoNavegador { 'C:\Navegador\msedge.exe' }
             $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
             $resultado.Codigo | Should Be 0
-            Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It
+            Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It -ParameterFilter {
+                $FilePath -eq 'C:\Navegador\msedge.exe' -and "$ArgumentList" -match '^--app=http://localhost:3000 '
+            }
+        }
+
+        It 'sem navegador de aplicativo, abre o endereço no navegador padrão' {
+            Mock Test-SistemaRespondendo { $true }
+            Mock Get-CaminhoNavegador { $null }
+            $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
+            $resultado.Codigo | Should Be 0
+            Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It -ParameterFilter { $FilePath -eq 'http://localhost:3000' }
         }
     }
 }
