@@ -1,111 +1,87 @@
 ﻿. (Join-Path $PSScriptRoot 'Apoio.ps1')
 
-Describe 'atalho do sistema' {
+function Get-AtalhoGravado {
+    param([Parameter(Mandatory = $true)][string]$Caminho)
+    return (New-Object -ComObject WScript.Shell).CreateShortcut($Caminho)
+}
+
+Describe 'atalho do painel' {
     Mock Invoke-Docker { Get-RespostaDockerFalso -Argumentos $Argumentos }
     Mock Invoke-LoginUsuario { 200 }
     Mock Get-IpLocal { $null }
 
-    Context 'up com navegador encontrado' {
-        Mock Get-CaminhoNavegador { 'C:\Navegador\msedge.exe' }
+    Context 'up' {
         Reset-DockerFalso
-        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'com')
-        New-EnvPreenchido -Ctx $ctx -Valores @{ FRONTEND_HOST_PORT = '3100' }
+        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'up')
+        New-EnvPreenchido -Ctx $ctx
         $null = New-Item -ItemType Directory -Path (Split-Path -Parent $ctx.CaminhoIcone) -Force
         Copy-Item -LiteralPath (Join-Path $RAIZ_REPOSITORIO 'assets\doceterapia.ico') -Destination $ctx.CaminhoIcone
         $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('up')
         $caminho = Join-Path $ctx.PastaAtalho 'Doceterapia.lnk'
 
-        It 'cria o atalho na pasta de atalhos' {
+        It 'cria um único atalho, sem depender de navegador' {
             $resultado.Codigo | Should Be 0
-            Test-Path -LiteralPath $caminho | Should Be $true
             $resultado.Texto | Should Match 'Atalho pronto'
+            @(Get-ChildItem -LiteralPath $ctx.PastaAtalho -Filter '*.lnk').Count | Should Be 1
         }
 
-        It 'abre a porta configurada numa janela de aplicativo com o ícone' {
-            $shell = New-Object -ComObject WScript.Shell
-            $atalho = $shell.CreateShortcut($caminho)
-            $atalho.TargetPath | Should Be 'C:\Navegador\msedge.exe'
-            $atalho.Arguments | Should Match '^--app=http://localhost:3100 '
-            $atalho.Arguments | Should Match '--user-data-dir='
+        It 'abre o painel pelo wscript, sem console, com o ícone' {
+            $atalho = Get-AtalhoGravado -Caminho $caminho
+            $atalho.TargetPath | Should Match 'wscript\.exe$'
+            $atalho.Arguments | Should Be "`"$(Join-Path $ctx.Raiz 'doceterapia.vbs')`""
             $atalho.IconLocation | Should Match 'assets\\doceterapia\.ico,0$'
         }
     }
 
-    Context 'up sem navegador' {
-        Mock Get-CaminhoNavegador { $null }
-        Reset-DockerFalso
-        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'sem')
-        New-EnvPreenchido -Ctx $ctx
-        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('up')
+    Context 'criar-atalho' {
+        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'criar')
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('criar-atalho')
 
-        It 'avisa e termina com sucesso sem criar o atalho' {
+        It 'cria o atalho do painel' {
             $resultado.Codigo | Should Be 0
-            $resultado.Texto | Should Match 'o atalho não foi criado'
-            Test-Path -LiteralPath (Join-Path $ctx.PastaAtalho 'Doceterapia.lnk') | Should Be $false
+            (Get-AtalhoGravado -Caminho (Join-Path $ctx.PastaAtalho 'Doceterapia.lnk')).TargetPath | Should Match 'wscript\.exe$'
         }
     }
 
-    Context 'abrir' {
-        Mock Start-Process { }
-        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'abrir')
-
-        It 'com o sistema parado, pede para ligar' {
-            Mock Test-SistemaRespondendo { $false }
-            $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
-            $resultado.Codigo | Should Be 2
-            $resultado.Texto | Should Match 'não está respondendo'
-            Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
-        }
-
-        It 'com o sistema no ar, abre a janela de aplicativo na porta configurada' {
-            Mock Test-SistemaRespondendo { $true }
-            Mock Get-CaminhoNavegador { 'C:\Navegador\msedge.exe' }
-            $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
-            $resultado.Codigo | Should Be 0
-            Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It -ParameterFilter {
-                $FilePath -eq 'C:\Navegador\msedge.exe' -and "$ArgumentList" -match '^--app=http://localhost:3000 '
-            }
-        }
-
-        It 'sem navegador de aplicativo, abre o endereço no navegador padrão' {
-            Mock Test-SistemaRespondendo { $true }
-            Mock Get-CaminhoNavegador { $null }
-            $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
-            $resultado.Codigo | Should Be 0
-            Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It -ParameterFilter { $FilePath -eq 'http://localhost:3000' }
-        }
-    }
-}
-
-Describe 'criar-atalhos' {
-    Mock Get-CaminhoNavegador { 'C:\Navegador\msedge.exe' }
-
-    Context 'com navegador' {
-        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'ambos')
-        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('criar-atalhos')
-        $painel = Join-Path $ctx.PastaAtalho 'Doceterapia - Painel.lnk'
-
-        It 'cria o atalho do painel e o do sistema' {
-            $resultado.Codigo | Should Be 0
-            Test-Path -LiteralPath $painel | Should Be $true
-            Test-Path -LiteralPath (Join-Path $ctx.PastaAtalho 'Doceterapia.lnk') | Should Be $true
-        }
-
-        It 'abre o painel pelo wscript, sem console' {
-            $atalho = (New-Object -ComObject WScript.Shell).CreateShortcut($painel)
-            $atalho.TargetPath | Should Match 'wscript\.exe$'
-            $atalho.Arguments | Should Be "`"$(Join-Path $ctx.Raiz 'doceterapia.vbs')`""
-        }
-    }
-
-    Context 'simulado' {
+    Context 'criar-atalho simulado' {
         $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'simulado')
-        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('criar-atalhos', '-Simular')
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('criar-atalho', '-Simular')
 
         It 'não cria nenhum atalho' {
             $resultado.Codigo | Should Be 0
             $resultado.Texto | Should Match 'criaria o atalho'
             @(Get-ChildItem -LiteralPath $ctx.PastaAtalho -Filter '*.lnk').Count | Should Be 0
         }
+    }
+}
+
+Describe 'abrir' {
+    Mock Start-Process { }
+    $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'abrir')
+
+    It 'com o sistema parado, pede para ligar' {
+        Mock Test-SistemaRespondendo { $false }
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
+        $resultado.Codigo | Should Be 2
+        $resultado.Texto | Should Match 'não está respondendo'
+        Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
+    }
+
+    It 'com o sistema no ar, abre a janela de aplicativo em tela cheia na porta configurada' {
+        Mock Test-SistemaRespondendo { $true }
+        Mock Get-CaminhoNavegador { 'C:\Navegador\msedge.exe' }
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
+        $resultado.Codigo | Should Be 0
+        Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It -ParameterFilter {
+            $FilePath -eq 'C:\Navegador\msedge.exe' -and "$ArgumentList" -match '^--app=http://localhost:3000 --start-fullscreen ' -and "$ArgumentList" -match '--user-data-dir='
+        }
+    }
+
+    It 'sem navegador de aplicativo, abre o endereço no navegador padrão' {
+        Mock Test-SistemaRespondendo { $true }
+        Mock Get-CaminhoNavegador { $null }
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('abrir')
+        $resultado.Codigo | Should Be 0
+        Assert-MockCalled Start-Process -Times 1 -Exactly -Scope It -ParameterFilter { $FilePath -eq 'http://localhost:3000' }
     }
 }
