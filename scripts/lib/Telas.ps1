@@ -84,7 +84,6 @@ function New-JanelaPainel {
         Principal = $null
         Progresso = $null
         Ocupado       = $false
-        Fechando      = $false
         ParaDescartar = @()
     }
     $janela.Add_Shown({
@@ -303,11 +302,23 @@ function Invoke-EventoNaJanela {
         'Assistente' { Show-Tela -Janela $Janela -Conteudo (New-TelaAssistente -Linhas $Evento.Linhas -PedirDona $Evento.PedirDona -PedirDemo $Evento.PedirDemo) }
         'Configuracoes' { Show-Tela -Janela $Janela -Conteudo (New-TelaConfiguracoes -Linhas $Evento.Linhas) }
         'Pergunta' { $Janela.Tag.Estado.Respostas[$Evento.Id] = Invoke-PerguntaNaJanela -Janela $Janela -Pergunta $Evento }
-        'Fechar' {
-            $Janela.Tag.Fechando = $true
-            $Janela.Close()
-        }
+        'Carregando' { Show-Tela -Janela $Janela -Conteudo (New-TelaCarregando -Texto $Evento.Texto) }
+        'Ocultar' { $Janela.Hide() }
+        'Mostrar' { Show-JanelaEmFoco -Janela $Janela }
     }
+}
+
+function Show-JanelaEmFoco {
+    # A brief TopMost brings the window over the browser even when Windows
+    # would only flash its taskbar button.
+    param([Parameter(Mandatory = $true)]$Janela)
+    if (-not $Janela.Visible) { $Janela.Show() }
+    if ($Janela.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) {
+        $Janela.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+    }
+    $Janela.TopMost = $true
+    $Janela.Activate()
+    $Janela.TopMost = $false
 }
 
 function Invoke-CicloDaJanela {
@@ -323,8 +334,9 @@ function Invoke-CicloDaJanela {
         while ($dados.Estado.Fila.TryDequeue([ref]$linha)) { $linhas.Add($linha) }
         if ($linhas.Count -gt 0) { Add-LinhasTelaProgresso -Janela $Janela -Linhas $linhas.ToArray() }
         if ($dados.Progresso -and $dados.Estado.EmOperacao) { $dados.Progresso.Etapa.Text = $dados.Estado.Etapa }
+        if ($dados.Estado.SinalFoco -and $dados.Estado.SinalFoco.WaitOne(0)) { Show-JanelaEmFoco -Janela $Janela }
         $evento = $null
-        while (-not $dados.Fechando -and $dados.Estado.Eventos.TryDequeue([ref]$evento)) {
+        while ($dados.Estado.Eventos.TryDequeue([ref]$evento)) {
             Invoke-EventoNaJanela -Janela $Janela -Evento $evento
         }
     }
@@ -339,7 +351,7 @@ function Confirm-FechamentoDaJanela {
         [Parameter(Mandatory = $true)]$Evento
     )
     $dados = $Janela.Tag
-    if (-not $dados.Fechando -and $dados.Estado.EmOperacao) {
+    if ($dados.Estado.EmOperacao) {
         $Evento.Cancel = $true
         Show-Mensagem -Texto 'Aguarde a operação terminar para fechar o painel.' -Tipo Aviso -Dono $Janela
         return

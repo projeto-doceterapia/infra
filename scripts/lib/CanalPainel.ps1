@@ -14,6 +14,7 @@ function New-EstadoPainel {
             EmOperacao = $false
             Encerrar   = $false
             Fechada    = $false
+            SinalFoco  = $null
         })
 }
 

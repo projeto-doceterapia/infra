@@ -84,12 +84,34 @@ function Start-AplicativoNavegador {
         [Parameter(Mandatory = $true)][hashtable]$Ctx,
         [Parameter(Mandatory = $true)][string]$Url
     )
+    # Returns true when the app window was used, the only case whose closing
+    # can be watched.
     $navegador = Get-CaminhoNavegador
     if ($navegador) {
         Start-Process -FilePath $navegador -ArgumentList (Get-ArgumentosAppNavegador -Url $Url -PastaPerfil $Ctx.PastaPerfilNavegador)
-        return
+        return $true
     }
     Start-Process -FilePath $Url
+    return $false
+}
+
+function Test-JanelaNavegadorAberta {
+    # The dedicated profile folder is on the command line of every process of
+    # the app window, and the browser may keep running in the background, so a
+    # visible window is what counts.
+    param([Parameter(Mandatory = $true)][string]$PastaPerfil)
+    $processos = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'msedge.exe' OR Name = 'chrome.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($PastaPerfil, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
+    foreach ($processo in $processos) {
+        if (Test-ProcessoComJanela -Id $processo.ProcessId) { return $true }
+    }
+    return $false
+}
+
+function Test-ProcessoComJanela {
+    param([Parameter(Mandatory = $true)][int]$Id)
+    $processo = Get-Process -Id $Id -ErrorAction SilentlyContinue
+    return ($null -ne $processo -and $processo.MainWindowHandle -ne [IntPtr]::Zero)
 }
 
 function Invoke-AbrirSistema {
@@ -102,5 +124,5 @@ function Invoke-AbrirSistema {
     if (-not (Test-SistemaRespondendo -Url $url)) {
         Stop-Launcher -Codigo $CODIGO_PRE_REQUISITO -Mensagem 'O sistema não está respondendo. Ligue o sistema primeiro: doceterapia up'
     }
-    Start-AplicativoNavegador -Ctx $Ctx -Url $url
+    $null = Start-AplicativoNavegador -Ctx $Ctx -Url $url
 }

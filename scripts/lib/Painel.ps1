@@ -3,6 +3,11 @@
 # rule and exit code.
 
 $ENTRADA_LAUNCHER = Join-Path (Split-Path -Parent $PSScriptRoot) 'doceterapia.ps1'
+$NOME_INSTANCIA = 'Local\Doceterapia.Painel'
+$NOME_SINAL_FOCO = 'Local\Doceterapia.Painel.Foco'
+$NAVEGADOR_LIMITE_ABERTURA_S = 30
+$NAVEGADOR_INTERVALO_S = 1
+$script:MonitorNavegador = $null
 
 $OPERACOES_DO_MENU = @{
     'up'            = 'Ligar o sistema'
@@ -54,9 +59,52 @@ function Wait-ThreadJanelaPainel {
     }
 }
 
+function Enter-InstanciaUnica {
+    # Returns the mutex that marks this panel as the running one, or $null when
+    # another panel already holds it.
+    param([string]$Nome = $NOME_INSTANCIA)
+    $criado = $false
+    $mutex = New-Object System.Threading.Mutex($true, $Nome, [ref]$criado)
+    if ($criado) { return $mutex }
+    $mutex.Dispose()
+    return $null
+}
+
+function Exit-InstanciaUnica {
+    param([Parameter(Mandatory = $true)]$Mutex)
+    $Mutex.ReleaseMutex()
+    $Mutex.Dispose()
+}
+
+function Request-FocoDaInstancia {
+    # Windows only lets a background process take the foreground when the
+    # process the person just started allows it.
+    param([string]$Nome = $NOME_SINAL_FOCO)
+    try {
+        Add-Type -Namespace Doceterapia -Name Nativo -MemberDefinition '[DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int dwProcessId);' -ErrorAction Stop
+        $null = [Doceterapia.Nativo]::AllowSetForegroundWindow(-1)
+    }
+    catch {
+        Write-Verbose 'Foreground permission not available.'
+    }
+    $sinal = $null
+    if ([System.Threading.EventWaitHandle]::TryOpenExisting($Nome, [ref]$sinal)) {
+        $null = $sinal.Set()
+        $sinal.Dispose()
+        return $true
+    }
+    return $false
+}
+
 function Start-Painel {
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $mutex = Enter-InstanciaUnica
+    if (-not $mutex) {
+        $null = Request-FocoDaInstancia
+        return
+    }
     $estado = New-EstadoPainel
+    $estado.SinalFoco = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::AutoReset, $NOME_SINAL_FOCO)
     $thread = Start-ThreadJanelaPainel -Estado $estado
     $script:Painel = $estado
     try {
@@ -66,22 +114,55 @@ function Start-Painel {
                 Invoke-PedidoDoPainel -Ctx $Ctx -Pedido $pedido
             }
             else {
+                Update-MonitorNavegador -Ctx $Ctx
                 Start-Sleep -Milliseconds 100
             }
         }
     }
     finally {
         $script:Painel = $null
+        $script:MonitorNavegador = $null
         $erros = @(Wait-ThreadJanelaPainel -Thread $thread)
+        $estado.SinalFoco.Dispose()
+        Exit-InstanciaUnica -Mutex $mutex
     }
     if ($erros.Count -gt 0) {
         Write-Erro "O painel foi fechado por um erro: $($erros[0])"
     }
 }
 
-function Close-Painel {
-    Send-EventoPainel @{ Tipo = 'Fechar' }
-    $script:Painel.Encerrar = $true
+function Start-MonitorNavegador {
+    $script:MonitorNavegador = @{
+        Fase            = 'Abrindo'
+        Limite          = (Get-Date).AddSeconds($NAVEGADOR_LIMITE_ABERTURA_S)
+        ProximaChecagem = Get-Date
+    }
+}
+
+function Update-MonitorNavegador {
+    # Runs between requests: the panel hides once the app window shows, and
+    # comes back to the menu when it closes or never shows.
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $monitor = $script:MonitorNavegador
+    if (-not $monitor -or (Get-Date) -lt $monitor.ProximaChecagem) { return }
+    $monitor.ProximaChecagem = (Get-Date).AddSeconds($NAVEGADOR_INTERVALO_S)
+    $aberta = Test-JanelaNavegadorAberta -PastaPerfil $Ctx.PastaPerfilNavegador
+    if ($monitor.Fase -eq 'Abrindo') {
+        if ($aberta) {
+            $monitor.Fase = 'Aberto'
+            Send-EventoPainel @{ Tipo = 'Ocultar' }
+        }
+        elseif ((Get-Date) -ge $monitor.Limite) {
+            $script:MonitorNavegador = $null
+            Show-MenuDoPainel
+        }
+        return
+    }
+    if (-not $aberta) {
+        $script:MonitorNavegador = $null
+        Send-EventoPainel @{ Tipo = 'Mostrar' }
+        Show-MenuDoPainel
+    }
 }
 
 function Show-MenuDoPainel {
@@ -161,8 +242,8 @@ function Get-EstadoDoPainel {
 }
 
 function Invoke-AbrirPeloPainel {
-    # A stopped system is offered a start first. Opening the system ends the
-    # panel and this hidden process.
+    # A stopped system is offered a start first. The panel waits on a loading
+    # screen for the app window, hides while it is open and returns after it.
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
     $url = Get-UrlSistema -Ctx $Ctx
     if (-not (Test-SistemaRespondendo -Url $url)) {
@@ -173,8 +254,12 @@ function Invoke-AbrirPeloPainel {
         $codigo = Invoke-OperacaoDoPainel -Titulo 'Ligar o sistema' -Trabalho { Invoke-Doceterapia -Ctx $Ctx -Argumentos @('up') }
         if ($codigo -ne $CODIGO_SUCESSO) { return }
     }
-    Start-AplicativoNavegador -Ctx $Ctx -Url $url
-    Close-Painel
+    Send-EventoPainel @{ Tipo = 'Carregando'; Texto = 'Abrindo o sistema...' }
+    if (Start-AplicativoNavegador -Ctx $Ctx -Url $url) {
+        Start-MonitorNavegador
+        return
+    }
+    Show-MenuDoPainel
 }
 
 function Test-DonaPendente {
