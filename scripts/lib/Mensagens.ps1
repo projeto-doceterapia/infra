@@ -23,24 +23,53 @@ function Stop-Launcher {
     throw $erro
 }
 
+$script:ResumoDaSessao = New-Object 'System.Collections.Generic.List[string]'
+
 function Write-Texto {
+    # With the dialogs on, the text is also kept to be shown when the command ends.
     param([string]$Texto = '')
     Write-Host $Texto
+    Add-LinhaProgresso $Texto
+    if (Test-InterfaceGrafica) { $script:ResumoDaSessao.Add($Texto) }
+}
+
+function Get-ResumoDaSessao {
+    return (($script:ResumoDaSessao -join "`n").Trim())
+}
+
+function Clear-ResumoDaSessao {
+    $script:ResumoDaSessao.Clear()
+    $script:UltimoErro = $null
 }
 
 function Write-Erro {
+    # Inside the progress window the error becomes its final status instead of
+    # a second dialog.
     param([string]$Texto)
     Write-Host $Texto -ForegroundColor Red
+    $script:UltimoErro = $Texto
+    if (Test-JanelaProgresso) {
+        Add-LinhaProgresso "ERRO: $Texto"
+        return
+    }
+    if (Test-InterfaceGrafica) { Show-Mensagem -Texto $Texto -Tipo Erro }
+}
+
+function Get-UltimoErro {
+    return $script:UltimoErro
 }
 
 function Write-Aviso {
     param([string]$Texto)
     Write-Host $Texto -ForegroundColor Yellow
+    Add-LinhaProgresso "AVISO: $Texto"
+    if (Test-InterfaceGrafica) { Show-Mensagem -Texto $Texto -Tipo Aviso }
 }
 
 function Write-Simulacao {
     param([string]$Texto)
     Write-Host "[simulação] $Texto" -ForegroundColor Cyan
+    Add-LinhaProgresso "[simulação] $Texto"
 }
 
 function Assert-SemArgumentos {
@@ -52,6 +81,7 @@ function Assert-SemArgumentos {
 
 function Read-Entrada {
     param([Parameter(Mandatory = $true)][string]$Pergunta)
+    if (Test-InterfaceGrafica) { return (Show-CaixaEntrada -Pergunta $Pergunta) }
     return (Read-Host $Pergunta)
 }
 
@@ -60,6 +90,7 @@ function Read-SimNao {
         [Parameter(Mandatory = $true)][string]$Pergunta,
         [bool]$Padrao = $false
     )
+    if (Test-InterfaceGrafica) { return (Show-PerguntaSimNao -Pergunta $Pergunta) }
     for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
         $resposta = "$(Read-Entrada -Pergunta "$Pergunta (S/N)")".Trim()
         if ($resposta -match '^(s|sim)$') { return $true }
@@ -76,7 +107,9 @@ function Wait-Intervalo {
 }
 
 function Wait-Enter {
-    # Keeps the window open on a double click. Hosts without input just continue.
+    # Keeps the console open on a double click. Dialogs need no pause, and hosts
+    # without input just continue.
+    if (Test-InterfaceGrafica) { return }
     try {
         $null = Read-Host 'Pressione Enter para fechar'
     }

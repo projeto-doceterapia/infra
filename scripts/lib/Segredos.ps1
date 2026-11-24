@@ -49,6 +49,7 @@ function Test-SegredoPendente {
 
 function Read-SenhaOculta {
     param([Parameter(Mandatory = $true)][string]$Pergunta)
+    if (Test-InterfaceGrafica) { return (Show-CaixaEntrada -Pergunta $Pergunta -Oculto) }
     $seguro = Read-Host $Pergunta -AsSecureString
     $ponteiro = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($seguro)
     try {

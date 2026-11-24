@@ -6,6 +6,28 @@
     }
 }
 
+function Get-ComandoConsoleLogs {
+    # PowerShell text for a separate console; every argument is quoted because
+    # the project path may contain spaces.
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][string]$Servico
+    )
+    $perfis = @(Get-PerfisAtivos -Linhas (Read-ConfiguracaoAtual -Ctx $Ctx))
+    $argumentos = @(Get-ArgumentosCompose -Ctx $Ctx -Perfis $perfis) + @('logs', '--tail', '200', '-f', $Servico)
+    $citados = @($argumentos | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" })
+    return "`$Host.UI.RawUI.WindowTitle = 'Doceterapia - registros de $Servico'; & docker $($citados -join ' ')"
+}
+
+function Start-ConsoleLogs {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][string]$Servico
+    )
+    $codificado = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes((Get-ComandoConsoleLogs -Ctx $Ctx -Servico $Servico)))
+    Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoExit', '-NoProfile', '-EncodedCommand', $codificado)
+}
+
 function Invoke-ComandoLogs {
     param(
         [Parameter(Mandatory = $true)][hashtable]$Ctx,

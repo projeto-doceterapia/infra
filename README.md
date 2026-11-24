@@ -19,9 +19,10 @@ por padrão.
 
 ## Soft launcher (Windows)
 
-No Windows, o caminho recomendado é o atalho `doceterapia.cmd`, que precisa só do Docker
-Desktop: nada de editar arquivos à mão, instalar Node ou mudar a política de execução da
-máquina. Na pasta do `infra`:
+No Windows, o caminho recomendado é o **painel**: dar dois cliques em `doceterapia.cmd` (ou no
+atalho `Doceterapia`) abre uma janela, sem console, que precisa só do Docker Desktop:
+nada de editar arquivos à mão, instalar Node ou mudar a política de execução da máquina. Veja
+[Painel do Windows](#painel-do-windows). Pelo terminal, na pasta do `infra`:
 
 ```bat
 doceterapia init
@@ -39,7 +40,9 @@ sem credencial nunca ficaria saudável e impediria a subida.
 
 | Subcomando | O que faz |
 |---|---|
-| `doceterapia ajuda` | Lista os subcomandos. Dar dois cliques no atalho mostra esta lista |
+| `doceterapia ajuda` | Lista os subcomandos |
+| `doceterapia abrir` | Abre o sistema em tela cheia numa janela própria, se ele estiver respondendo |
+| `doceterapia criar-atalho` | Cria na Área de Trabalho o atalho `Doceterapia`, que abre o painel |
 | `doceterapia doctor` | Confere PowerShell, Docker Engine 25+, Compose 2.20+, memória e portas, com a correção de cada problema |
 | `doceterapia init` | Cria ou completa o `.env`. Pode rodar de novo: nunca troca um segredo existente |
 | `doceterapia up` | Sobe tudo, confirma o primeiro acesso e mostra o endereço |
@@ -50,6 +53,59 @@ sem credencial nunca ficaria saudável e impediria a subida.
 | `doceterapia atualizar` | Compara as tags do `.env.example` com as do `.env`, faz backup, troca as tags, acrescenta as variáveis novas, baixa as imagens e sobe |
 | `doceterapia logs <serviço>` | Acompanha o log do serviço. Sem nome, lista os serviços |
 | `doceterapia resetar-banco` | Pede que se digite `APAGAR`, faz backup e recria só o banco, perguntando de novo o nome, o e-mail e a senha da DONA e os dados de demonstração |
+
+### Painel do Windows
+
+O `doceterapia.cmd` sem argumentos chama o `doceterapia.vbs`, que abre o painel com o PowerShell
+oculto. Com argumentos, o `.cmd` continua sendo o terminal descrito acima.
+
+Só um painel roda por vez: clicar de novo no atalho, com o painel aberto ou escondido atrás do
+sistema, traz o painel existente para a frente em vez de abrir outro.
+
+O painel é uma janela só: o menu, o andamento das operações, o assistente e as configurações são
+telas que se trocam dentro dela. Ao escolher uma ação, a janela mostra na hora uma tela de
+carregamento, enquanto a próxima tela é preparada.
+
+- **Topo:** um farol verde com "Sistema ligado", ou vermelho com "Sistema desligado" ou "Sistema
+  não configurado".
+- **Botão principal:** `Abrir sistema`. Ele confere se o sistema responde, oferece ligá-lo quando
+  está parado e abre o Microsoft Edge (ou o Google Chrome) em modo aplicativo e em tela cheia, sem
+  abas nem barra de endereço, na porta configurada, com um perfil separado em
+  `%LOCALAPPDATA%\Doceterapia\navegador`. Para sair da tela cheia, use F11; para fechar, Alt+F4.
+  Sem Edge nem Chrome, o endereço abre no navegador padrão. O painel mostra "Abrindo o sistema..."
+  até a janela do sistema aparecer e então se esconde; quando essa janela fecha, o painel volta ao
+  menu. Se a janela não aparecer em 30 segundos, o painel volta ao menu. Antes da primeira
+  configuração, o botão principal é `Configurar o sistema`.
+- **Configurar (primeira vez):** assistente de até três telas, com Voltar, Avançar e Concluir:
+  conta da DONA (só enquanto não há banco), WhatsApp (canal, telefone e chaves, com a opção de
+  configurar as chaves depois) e resumo. Cada tela confere os campos antes de avançar e marca o
+  campo com problema. Concluir grava a configuração e liga o sistema.
+- **Configurações do WhatsApp:** muda depois o canal, o telefone e as chaves. Chave em branco
+  mantém a atual. Ao salvar, só os serviços que leem o valor alterado são recriados (por exemplo,
+  a chave do Gemini recria só o `orquestrador`); trocar o canal desliga e liga tudo, sem apagar
+  dados. Com o sistema desligado, a mudança vale na próxima vez que ele ligar. A porta do
+  front-end e a conta da DONA não mudam por aqui.
+- **Ver logs:** escolhe um dos serviços em execução e abre um console com as últimas 200 linhas
+  e as novas, em tempo real.
+- **Ações longas** (ligar, desligar, backup, restaurar, atualizar, recriar o banco, verificar)
+  mostram, na mesma janela, a etapa atual e o registro do Docker. No fim aparece o resultado e o
+  botão `Voltar ao menu`; depois de ligar, também `Abrir sistema`. Durante uma operação, o painel
+  não fecha.
+- **Perguntas curtas** (como digitar `APAGAR` ou `RESTAURAR`, ou confirmar a atualização) e avisos
+  aparecem em caixas sobre o painel; senhas e chaves ficam ocultas. Para restaurar, uma caixa pede
+  a pasta do backup. Um erro mostra a mensagem e volta ao menu, sem fechar o painel.
+
+### Atalho
+
+Quando o sistema fica no ar (`up`, `atualizar`, `resetar-banco`), o launcher cria o atalho
+`Doceterapia` na Área de Trabalho, com o ícone de `assets\doceterapia.ico`. Ele abre o painel pelo
+`wscript.exe`, sem console. O botão `Criar atalho` (ou `doceterapia criar-atalho`) cria o mesmo
+atalho a qualquer momento.
+
+Executável único: avaliado e não adotado por enquanto. Um `.exe` sem assinatura digital dispara o
+SmartScreen e alertas de antivírus, e o `ps2exe` seria uma dependência de terceiros. O `.vbs` mais o
+atalho cobrem o mesmo uso sem esses problemas. Se um arquivo único for exigido, a opção indicada é
+um pequeno programa em C# compilado com o `csc.exe` do .NET Framework do próprio Windows.
 
 Qualquer subcomando aceita `-Simular`: mostra os comandos do Docker e as variáveis que
 mudariam, com os valores mascarados, sem executar nem gravar nada.

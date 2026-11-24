@@ -26,6 +26,9 @@ function New-ContextoLauncher {
         CaminhoExemplo = Join-Path $Raiz '.env.example'
         CaminhoCompose = Join-Path $Raiz 'docker-compose.yml'
         PastaBackups   = Join-Path $Raiz 'backups'
+        CaminhoIcone   = Join-Path $Raiz 'assets\doceterapia.ico'
+        PastaAtalho    = [Environment]::GetFolderPath('Desktop')
+        PastaPerfilNavegador = Join-Path $env:LOCALAPPDATA 'Doceterapia\navegador'
         Projeto        = Get-NomeProjeto -CaminhoEnv $caminhoEnv
         Simular        = $false
     }
@@ -46,6 +49,11 @@ function Invoke-DockerNativo {
     }
     elseif ($Capturar) {
         $saida = @(& docker @Argumentos 2>$null | ForEach-Object { "$_" })
+    }
+    elseif (Test-JanelaProgresso) {
+        # Compose writes its progress to stderr, which the window must show too.
+        $saida = @()
+        & docker @Argumentos 2>&1 | ForEach-Object { Add-LinhaProgresso "$_" }
     }
     else {
         $saida = @()
@@ -188,6 +196,13 @@ function Stop-ServicoNaoPronto {
     $naoProntos = @(Get-ServicosNaoProntos -Ctx $Ctx)
     $servico = if ($naoProntos.Count -gt 0) { $naoProntos[0] } else { 'back-end' }
     Stop-Launcher -Codigo $CODIGO_SERVICO -Mensagem "O serviço $servico não ficou pronto em 5 minutos. Veja: doceterapia logs $servico"
+}
+
+function Get-ServicosEmExecucao {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $resultado = Invoke-Compose -Ctx $Ctx -Argumentos @('ps', '--services', '--status', 'running') -Capturar
+    if ($resultado.Codigo -ne 0) { return @() }
+    return @($resultado.Saida | Where-Object { $_ } | Sort-Object)
 }
 
 function Get-ServicosValidos {

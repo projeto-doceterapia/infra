@@ -21,6 +21,10 @@ function New-RaizDeTeste {
     Copy-Item -LiteralPath (Join-Path $RAIZ_REPOSITORIO 'docker-compose.yml') -Destination (Join-Path $Pasta 'docker-compose.yml')
     $ctx = New-ContextoLauncher -Raiz $Pasta
     $ctx.Projeto = 'doceterapia'
+    # Outside the infra folder, so the dry-run checks still see it unchanged.
+    $ctx.PastaAtalho = Join-Path (Split-Path -Parent $Pasta) "$(Split-Path -Leaf $Pasta)-area-de-trabalho"
+    $ctx.PastaPerfilNavegador = Join-Path $ctx.PastaAtalho 'perfil'
+    $null = New-Item -ItemType Directory -Path $ctx.PastaAtalho -Force
     return $ctx
 }
 
