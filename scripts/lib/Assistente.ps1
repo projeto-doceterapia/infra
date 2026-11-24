@@ -1,30 +1,16 @@
-﻿# Setup wizard and settings window. They only collect and validate answers;
-# init and the restart plan apply them, so the console keeps the same rules.
+﻿# Setup wizard and settings screens of the panel window. They only collect and
+# validate answers; init and the restart plan apply them, so the console keeps
+# the same rules.
 
 function Get-CorErro { return [System.Drawing.Color]::FromArgb(180, 30, 30) }
 
 function Get-CorDiscreta { return [System.Drawing.Color]::FromArgb(110, 110, 110) }
 
-function New-Rotulo {
-    param(
-        [Parameter(Mandatory = $true)][string]$Texto,
-        [Parameter(Mandatory = $true)][int]$X,
-        [Parameter(Mandatory = $true)][int]$Y,
-        [int]$Largura = 520,
-        [int]$Altura = 22
-    )
-    $rotulo = New-Object System.Windows.Forms.Label
-    $rotulo.Text = $Texto
-    $rotulo.Location = New-Object System.Drawing.Point($X, $Y)
-    $rotulo.Size = New-Object System.Drawing.Size($Largura, $Altura)
-    return $rotulo
-}
-
 function New-CaixaTexto {
     param(
         [Parameter(Mandatory = $true)][int]$X,
         [Parameter(Mandatory = $true)][int]$Y,
-        [string]$Texto = '',
+        [AllowEmptyString()][string]$Texto = '',
         [switch]$Oculto,
         [int]$Largura = 340
     )
@@ -41,9 +27,8 @@ function New-PainelDona {
         [Parameter(Mandatory = $true)][bool]$PedirDona,
         [Parameter(Mandatory = $true)][bool]$PedirDemo
     )
-    $painel = New-Object System.Windows.Forms.Panel
-    $painel.Dock = 'Fill'
-    $controles = @{ Painel = $painel; Campos = @{} }
+    $painel = New-PainelTela
+    $controles = @{ Painel = $painel; Campos = @{}; Demo = $null }
     $y = 4
     if ($PedirDona) {
         foreach ($campo in @(
@@ -51,7 +36,7 @@ function New-PainelDona {
                 @{ Chave = 'Email'; Rotulo = 'E-mail da DONA (usado para entrar no sistema)'; Oculto = $false },
                 @{ Chave = 'Senha'; Rotulo = 'Senha (6 a 20 caracteres)'; Oculto = $true },
                 @{ Chave = 'Confirmacao'; Rotulo = 'Repita a senha'; Oculto = $true })) {
-            $painel.Controls.Add((New-Rotulo -Texto $campo.Rotulo -X 0 -Y $y))
+            $painel.Controls.Add((New-RotuloTela -Texto $campo.Rotulo -X 0 -Y $y))
             $caixa = New-CaixaTexto -X 0 -Y ($y + 24) -Oculto:$campo.Oculto
             $painel.Controls.Add($caixa)
             $controles.Campos[$campo.Chave] = $caixa
@@ -76,13 +61,11 @@ function New-PainelWhatsApp {
         [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas,
         [switch]$ComAdiar
     )
-    $painel = New-Object System.Windows.Forms.Panel
-    $painel.Dock = 'Fill'
+    $painel = New-PainelTela
     $painel.AutoScroll = $true
-    $controles = @{ Painel = $painel; Campos = @{} }
+    $controles = @{ Painel = $painel; Campos = @{}; Adiar = $null }
 
-    $canalAtual = Get-ValorEnv -Linhas $Linhas -Chave 'CHANNEL'
-    $painel.Controls.Add((New-Rotulo -Texto 'Como o assistente conversa no WhatsApp' -X 0 -Y 4))
+    $painel.Controls.Add((New-RotuloTela -Texto 'Como o assistente conversa no WhatsApp' -X 0 -Y 4))
     $nuvem = New-Object System.Windows.Forms.RadioButton
     $nuvem.Text = 'API oficial do WhatsApp (Cloud API)'
     $nuvem.Location = New-Object System.Drawing.Point(0, 28)
@@ -91,13 +74,13 @@ function New-PainelWhatsApp {
     $celular.Text = 'Pareando um celular (Baileys)'
     $celular.Location = New-Object System.Drawing.Point(0, 52)
     $celular.Size = New-Object System.Drawing.Size(520, 24)
-    $celular.Checked = ($canalAtual -eq 'baileys')
+    $celular.Checked = ((Get-ValorEnv -Linhas $Linhas -Chave 'CHANNEL') -eq 'baileys')
     $nuvem.Checked = -not $celular.Checked
     $painel.Controls.AddRange(@($nuvem, $celular))
     $controles.Celular = $celular
 
-    $painel.Controls.Add((New-Rotulo -Texto 'Telefone da beneficiária (formato +5511900000001)' -X 0 -Y 84))
-    $controles.Telefone = New-CaixaTexto -X 0 -Y 108 -Texto (Get-ValorEnv -Linhas $Linhas -Chave 'BENEFICIARIA_TELEFONE')
+    $painel.Controls.Add((New-RotuloTela -Texto 'Telefone da beneficiária (formato +5511900000001)' -X 0 -Y 84))
+    $controles.Telefone = New-CaixaTexto -X 0 -Y 108 -Texto "$(Get-ValorEnv -Linhas $Linhas -Chave 'BENEFICIARIA_TELEFONE')"
     $painel.Controls.Add($controles.Telefone)
 
     $y = 144
@@ -113,11 +96,11 @@ function New-PainelWhatsApp {
 
     $campos = @($CAMPOS_EXTERNOS | Where-Object { -not $_.Canal }) + @($CAMPOS_EXTERNOS | Where-Object { $_.Canal })
     foreach ($campo in $campos) {
-        $atual = Get-ValorEnv -Linhas $Linhas -Chave $campo.Chave
+        $atual = "$(Get-ValorEnv -Linhas $Linhas -Chave $campo.Chave)"
         $pendente = Test-SegredoPendente $atual
-        $rotulo = New-Rotulo -Texto $campo.Rotulo -X 0 -Y $y -Largura 340
-        $situacao = New-Rotulo -Texto $(if ($pendente) { 'pendente' } else { 'configurado: em branco mantém' }) -X 350 -Y $y -Largura 200
-        $situacao.ForeColor = (Get-CorDiscreta)
+        $rotulo = New-RotuloTela -Texto $campo.Rotulo -X 0 -Y $y -Largura 340
+        $situacao = New-RotuloTela -Texto $(if ($pendente) { 'pendente' } else { 'configurado: em branco mantém' }) -X 350 -Y $y -Largura 190
+        $situacao.ForeColor = Get-CorDiscreta
         $texto = if (-not $campo.Oculto -and -not $pendente) { $atual } else { '' }
         $caixa = New-CaixaTexto -X 0 -Y ($y + 22) -Texto $texto -Oculto:$campo.Oculto
         $painel.Controls.AddRange(@($rotulo, $situacao, $caixa))
@@ -125,19 +108,26 @@ function New-PainelWhatsApp {
         $y += 56
     }
 
-    $atualizar = {
-        $canal = if ($controles.Celular.Checked) { 'baileys' } else { 'cloud_api' }
-        $adiado = $controles.Adiar -and $controles.Adiar.Checked
-        foreach ($campo in $controles.Campos.Values) {
-            $visivel = (-not $campo.Canal -or $campo.Canal -eq $canal)
-            foreach ($elemento in $campo.Elementos) { $elemento.Visible = $visivel }
-            $campo.Caixa.Enabled = -not $adiado
-        }
-    }.GetNewClosure()
-    $celular.Add_CheckedChanged($atualizar)
-    if ($controles.Adiar) { $controles.Adiar.Add_CheckedChanged($atualizar) }
-    & $atualizar
+    $celular.Tag = $controles
+    $celular.Add_CheckedChanged({ param($origem) Update-PainelWhatsApp -Controles $origem.Tag })
+    if ($controles.Adiar) {
+        $controles.Adiar.Tag = $controles
+        $controles.Adiar.Add_CheckedChanged({ param($origem) Update-PainelWhatsApp -Controles $origem.Tag })
+    }
+    Update-PainelWhatsApp -Controles $controles
     return $controles
+}
+
+function Update-PainelWhatsApp {
+    # Shows only the keys of the chosen channel and locks them while deferred.
+    param([Parameter(Mandatory = $true)][hashtable]$Controles)
+    $canal = if ($Controles.Celular.Checked) { 'baileys' } else { 'cloud_api' }
+    $adiado = $Controles.Adiar -and $Controles.Adiar.Checked
+    foreach ($campo in $Controles.Campos.Values) {
+        $visivel = (-not $campo.Canal -or $campo.Canal -eq $canal)
+        foreach ($elemento in $campo.Elementos) { $elemento.Visible = $visivel }
+        $campo.Caixa.Enabled = -not $adiado
+    }
 }
 
 function Get-ValoresPainelWhatsApp {
@@ -193,7 +183,7 @@ function Get-TextoResumo {
     $linhas += "WhatsApp: $canal"
     $linhas += "Telefone da beneficiária: $($Valores.BENEFICIARIA_TELEFONE)"
     if ($Adiado) {
-        $linhas += 'Chaves externas: configurar depois, pelo botão Configurações'
+        $linhas += 'Chaves externas: configurar depois, pelo botão Configurações do WhatsApp'
     }
     else {
         foreach ($campo in $CAMPOS_EXTERNOS) {
@@ -208,168 +198,171 @@ function Get-TextoResumo {
     return ($linhas -join "`r`n")
 }
 
-function Show-Assistente {
-    # Returns @{ Dona; Demo; Valores } for init, or $null when cancelled.
+function New-MolduraFormulario {
+    # Title, hint, content area, error line and the button row shared by the
+    # wizard and the settings screen.
+    param([Parameter(Mandatory = $true)][string]$Titulo)
+    $painel = New-PainelTela
+    $rotuloTitulo = New-RotuloTela -Texto $Titulo -X 20 -Y 0 -Largura 520 -Altura 30
+    $rotuloTitulo.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
+    $dica = New-RotuloTela -X 20 -Y 32 -Largura 520 -Altura 26
+    $dica.ForeColor = Get-CorDiscreta
+    $area = New-Object System.Windows.Forms.Panel
+    $area.Location = New-Object System.Drawing.Point(20, 60)
+    $area.Size = New-Object System.Drawing.Size(520, 364)
+    $erro = New-RotuloTela -X 20 -Y 426 -Largura 520 -Altura 32
+    $erro.ForeColor = Get-CorErro
+    $provedor = New-Object System.Windows.Forms.ErrorProvider
+    $provedor.BlinkStyle = 'NeverBlink'
+    $painel.Controls.AddRange(@($rotuloTitulo, $dica, $area, $erro))
+    $painel.Add_Disposed({ param($origem) $origem.Tag.Provedor.Dispose() })
+    return @{ Painel = $painel; Titulo = $rotuloTitulo; Dica = $dica; Area = $area; Erro = $erro; Provedor = $provedor }
+}
+
+function New-BotaoTela {
+    param(
+        [Parameter(Mandatory = $true)][string]$Texto,
+        [Parameter(Mandatory = $true)][int]$X,
+        [Parameter(Mandatory = $true)][hashtable]$Tela,
+        [Parameter(Mandatory = $true)][scriptblock]$AoClicar
+    )
+    $botao = New-Botao -Texto $Texto -X $X -Y 464
+    $botao.Tag = $Tela
+    $botao.Add_Click($AoClicar)
+    $Tela.Painel.Controls.Add($botao)
+    return $botao
+}
+
+function New-TelaAssistente {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas,
         [Parameter(Mandatory = $true)][bool]$PedirDona,
         [Parameter(Mandatory = $true)][bool]$PedirDemo
     )
-    $janela = New-JanelaBase -Largura 600 -Altura 600
-    $janela.Text = 'Doceterapia - Configuração'
-    $titulo = New-Rotulo -Texto '' -X 20 -Y 14 -Largura 560 -Altura 30
-    $titulo.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
-    $passo = New-Rotulo -Texto '' -X 20 -Y 46 -Largura 560
-    $passo.ForeColor = (Get-CorDiscreta)
-    $area = New-Object System.Windows.Forms.Panel
-    $area.Location = New-Object System.Drawing.Point(20, 78)
-    $area.Size = New-Object System.Drawing.Size(560, 420)
-    $erro = New-Rotulo -Texto '' -X 20 -Y 504 -Largura 560 -Altura 36
-    $erro.ForeColor = (Get-CorErro)
-    $voltar = New-Botao -Texto 'Voltar' -X 262 -Y 552
-    $avancar = New-Botao -Texto 'Avançar' -X 368 -Y 552
-    $cancelar = New-Botao -Texto 'Cancelar' -X 480 -Y 552 -Resultado Cancel
-    $janela.Controls.AddRange(@($titulo, $passo, $area, $erro, $voltar, $avancar, $cancelar))
-    $janela.AcceptButton = $avancar
-    $janela.CancelButton = $cancelar
-    $provedor = New-Object System.Windows.Forms.ErrorProvider
-    $provedor.BlinkStyle = 'NeverBlink'
-
-    $paginas = New-Object System.Collections.Generic.List[hashtable]
-    $dona = $null
+    $tela = New-MolduraFormulario -Titulo 'Configuração'
+    $tela.Paginas = New-Object System.Collections.Generic.List[hashtable]
+    $tela.Dona = $null
     if ($PedirDona -or $PedirDemo) {
-        $dona = New-PainelDona -PedirDona $PedirDona -PedirDemo $PedirDemo
-        $paginas.Add(@{ Titulo = 'Conta da DONA'; Controles = $dona; Painel = $dona.Painel })
+        $tela.Dona = New-PainelDona -PedirDona $PedirDona -PedirDemo $PedirDemo
+        $tela.Paginas.Add(@{ Titulo = 'Conta da DONA'; Painel = $tela.Dona.Painel })
     }
-    $whatsapp = New-PainelWhatsApp -Linhas $Linhas -ComAdiar
-    $paginas.Add(@{ Titulo = 'WhatsApp'; Controles = $whatsapp; Painel = $whatsapp.Painel })
-    $resumoCaixa = New-Object System.Windows.Forms.TextBox
-    $resumoCaixa.Multiline = $true
-    $resumoCaixa.ReadOnly = $true
-    $resumoCaixa.Dock = 'Fill'
-    $paginas.Add(@{ Titulo = 'Resumo'; Painel = $resumoCaixa })
+    $tela.WhatsApp = New-PainelWhatsApp -Linhas $Linhas -ComAdiar
+    $tela.Paginas.Add(@{ Titulo = 'WhatsApp'; Painel = $tela.WhatsApp.Painel })
+    $tela.Resumo = New-Object System.Windows.Forms.TextBox
+    $tela.Resumo.Multiline = $true
+    $tela.Resumo.ReadOnly = $true
+    $tela.Resumo.Dock = 'Fill'
+    $tela.Paginas.Add(@{ Titulo = 'Resumo'; Painel = $tela.Resumo })
+    $tela.Indice = 0
+    $tela.Resultado = $null
+    $tela.Painel.Tag = $tela
 
-    $estado = @{ Indice = 0; Resultado = $null }
+    $tela.Voltar = New-BotaoTela -Texto 'Voltar' -X 222 -Tela $tela -AoClicar { param($origem) Step-Assistente -Tela $origem.Tag -Direcao -1 }
+    $tela.Avancar = New-BotaoTela -Texto 'Avançar' -X 330 -Tela $tela -AoClicar { param($origem) Step-Assistente -Tela $origem.Tag -Direcao 1 }
+    $null = New-BotaoTela -Texto 'Cancelar' -X 440 -Tela $tela -AoClicar { param($origem) Show-TelaMenu -Janela $origem.FindForm() }
+    Show-PaginaAssistente -Tela $tela
+    return $tela.Painel
+}
 
-    $lerDona = {
-        if (-not $dona -or -not $dona.Campos.Count) { return $null }
-        return @{
-            Nome        = $dona.Campos.Nome.Text.Trim()
-            Email       = $dona.Campos.Email.Text.Trim()
-            Senha       = $dona.Campos.Senha.Text
-            Confirmacao = $dona.Campos.Confirmacao.Text
-        }
-    }
-    $mostrar = {
-        $pagina = $paginas[$estado.Indice]
-        $area.Controls.Clear()
-        $area.Controls.Add($pagina.Painel)
-        $titulo.Text = $pagina.Titulo
-        $passo.Text = "Passo $($estado.Indice + 1) de $($paginas.Count)"
-        $voltar.Enabled = $estado.Indice -gt 0
-        $ultima = ($estado.Indice -eq $paginas.Count - 1)
-        $avancar.Text = if ($ultima) { 'Concluir' } else { 'Avançar' }
-        if ($ultima) {
-            $adiado = [bool]$whatsapp.Adiar.Checked
-            $demo = if ($dona -and $dona.Demo) { $dona.Demo.Checked } else { $null }
-            $resumoCaixa.Text = Get-TextoResumo -Dona (& $lerDona) -Demo $demo -Valores (Get-ValoresPainelWhatsApp -Controles $whatsapp) -Adiado $adiado
-        }
-        $erro.Text = ''
-    }
-    $validar = {
-        $pagina = $paginas[$estado.Indice]
-        if ($pagina.Controles -eq $dona -and $dona.Campos.Count) {
-            $d = & $lerDona
-            $erros = Get-ErrosDaDona -Nome $d.Nome -Email $d.Email -Senha $d.Senha -Confirmacao $d.Confirmacao
-            return (Show-ErrosNosCampos -Provedor $provedor -Erros $erros -Caixas $dona.Campos)
-        }
-        if ($pagina.Controles -eq $whatsapp) {
-            $erros = Get-ErrosDoAssistente -Valores (Get-ValoresPainelWhatsApp -Controles $whatsapp)
-            return (Show-ErrosNosCampos -Provedor $provedor -Erros $erros -Caixas (Get-CaixasWhatsApp -Controles $whatsapp))
-        }
-        return ''
-    }
-
-    $voltar.Add_Click({
-            $provedor.Clear()
-            $estado.Indice--
-            & $mostrar
-        })
-    $avancar.Add_Click({
-            $mensagem = & $validar
-            if ($mensagem) {
-                $erro.Text = $mensagem
-                return
-            }
-            if ($estado.Indice -lt $paginas.Count - 1) {
-                $estado.Indice++
-                & $mostrar
-                return
-            }
-            $d = & $lerDona
-            $estado.Resultado = @{
-                Dona    = $(if ($d) { @{ Nome = $d.Nome; Email = $d.Email; Senha = $d.Senha } } else { $null })
-                Demo    = [bool]($dona -and $dona.Demo -and $dona.Demo.Checked)
-                Valores = Get-ValoresPainelWhatsApp -Controles $whatsapp
-            }
-            $janela.DialogResult = [System.Windows.Forms.DialogResult]::OK
-            $janela.Close()
-        })
-
-    & $mostrar
-    try {
-        $null = $janela.ShowDialog()
-        return $estado.Resultado
-    }
-    finally {
-        $provedor.Dispose()
-        $janela.Dispose()
+function Get-DonaDoAssistente {
+    param([Parameter(Mandatory = $true)][hashtable]$Tela)
+    if (-not $Tela.Dona -or $Tela.Dona.Campos.Count -eq 0) { return $null }
+    $campos = $Tela.Dona.Campos
+    return @{
+        Nome        = $campos.Nome.Text.Trim()
+        Email       = $campos.Email.Text.Trim()
+        Senha       = $campos.Senha.Text
+        Confirmacao = $campos.Confirmacao.Text
     }
 }
 
-function Show-Configuracoes {
-    # Returns the values to write, keyed by env key, or $null when cancelled.
+function Show-PaginaAssistente {
+    param([Parameter(Mandatory = $true)][hashtable]$Tela)
+    $pagina = $Tela.Paginas[$Tela.Indice]
+    $Tela.Area.Controls.Clear()
+    $Tela.Area.Controls.Add($pagina.Painel)
+    $Tela.Titulo.Text = $pagina.Titulo
+    $Tela.Dica.Text = "Passo $($Tela.Indice + 1) de $($Tela.Paginas.Count)"
+    $Tela.Voltar.Enabled = $Tela.Indice -gt 0
+    $ultima = ($Tela.Indice -eq $Tela.Paginas.Count - 1)
+    $Tela.Avancar.Text = if ($ultima) { 'Concluir' } else { 'Avançar' }
+    if ($ultima) {
+        $demo = if ($Tela.Dona -and $Tela.Dona.Demo) { $Tela.Dona.Demo.Checked } else { $null }
+        $Tela.Resumo.Text = Get-TextoResumo -Dona (Get-DonaDoAssistente -Tela $Tela) -Demo $demo `
+            -Valores (Get-ValoresPainelWhatsApp -Controles $Tela.WhatsApp) -Adiado ([bool]$Tela.WhatsApp.Adiar.Checked)
+    }
+    $Tela.Erro.Text = ''
+}
+
+function Test-PaginaAssistente {
+    # Returns the first error of the current page, or '' when it is valid.
+    param([Parameter(Mandatory = $true)][hashtable]$Tela)
+    $painel = $Tela.Paginas[$Tela.Indice].Painel
+    if ($Tela.Dona -and $painel -eq $Tela.Dona.Painel -and $Tela.Dona.Campos.Count -gt 0) {
+        $dona = Get-DonaDoAssistente -Tela $Tela
+        $erros = Get-ErrosDaDona -Nome $dona.Nome -Email $dona.Email -Senha $dona.Senha -Confirmacao $dona.Confirmacao
+        return (Show-ErrosNosCampos -Provedor $Tela.Provedor -Erros $erros -Caixas $Tela.Dona.Campos)
+    }
+    if ($painel -eq $Tela.WhatsApp.Painel) {
+        $erros = Get-ErrosDoAssistente -Valores (Get-ValoresPainelWhatsApp -Controles $Tela.WhatsApp)
+        return (Show-ErrosNosCampos -Provedor $Tela.Provedor -Erros $erros -Caixas (Get-CaixasWhatsApp -Controles $Tela.WhatsApp))
+    }
+    return ''
+}
+
+function Step-Assistente {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Tela,
+        [Parameter(Mandatory = $true)][int]$Direcao
+    )
+    if ($Direcao -lt 0) {
+        $Tela.Provedor.Clear()
+        if ($Tela.Indice -gt 0) { $Tela.Indice-- }
+        Show-PaginaAssistente -Tela $Tela
+        return
+    }
+    $mensagem = Test-PaginaAssistente -Tela $Tela
+    if ($mensagem) {
+        $Tela.Erro.Text = $mensagem
+        return
+    }
+    if ($Tela.Indice -lt $Tela.Paginas.Count - 1) {
+        $Tela.Indice++
+        Show-PaginaAssistente -Tela $Tela
+        return
+    }
+    $dona = Get-DonaDoAssistente -Tela $Tela
+    $Tela.Resultado = @{
+        Dona    = $(if ($dona) { @{ Nome = $dona.Nome; Email = $dona.Email; Senha = $dona.Senha } } else { $null })
+        Demo    = [bool]($Tela.Dona -and $Tela.Dona.Demo -and $Tela.Dona.Demo.Checked)
+        Valores = Get-ValoresPainelWhatsApp -Controles $Tela.WhatsApp
+    }
+    $janela = $Tela.Painel.FindForm()
+    if ($janela) { Submit-PedidoDaJanela -Janela $janela -Acao 'configurar' -Dados $Tela.Resultado -Carregando 'Gravando a configuração...' }
+}
+
+function New-TelaConfiguracoes {
     param([Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas)
-    $janela = New-JanelaBase -Largura 600 -Altura 600
-    $janela.Text = 'Doceterapia - Configurações'
-    $titulo = New-Rotulo -Texto 'Configurações do WhatsApp' -X 20 -Y 14 -Largura 560 -Altura 30
-    $titulo.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
-    $nota = New-Rotulo -Texto 'Ao salvar, só os serviços afetados são reiniciados. A conta da DONA não muda aqui.' -X 20 -Y 46 -Largura 560 -Altura 28
-    $nota.ForeColor = (Get-CorDiscreta)
-    $area = New-Object System.Windows.Forms.Panel
-    $area.Location = New-Object System.Drawing.Point(20, 78)
-    $area.Size = New-Object System.Drawing.Size(560, 420)
-    $whatsapp = New-PainelWhatsApp -Linhas $Linhas
-    $area.Controls.Add($whatsapp.Painel)
-    $erro = New-Rotulo -Texto '' -X 20 -Y 504 -Largura 560 -Altura 36
-    $erro.ForeColor = (Get-CorErro)
-    $salvar = New-Botao -Texto 'Salvar' -X 368 -Y 552
-    $cancelar = New-Botao -Texto 'Cancelar' -X 480 -Y 552 -Resultado Cancel
-    $janela.Controls.AddRange(@($titulo, $nota, $area, $erro, $salvar, $cancelar))
-    $janela.AcceptButton = $salvar
-    $janela.CancelButton = $cancelar
-    $provedor = New-Object System.Windows.Forms.ErrorProvider
-    $provedor.BlinkStyle = 'NeverBlink'
-    $estado = @{ Resultado = $null }
+    $tela = New-MolduraFormulario -Titulo 'Configurações do WhatsApp'
+    $tela.Dica.Text = 'Ao salvar, só os serviços afetados são reiniciados. A conta da DONA não muda aqui.'
+    $tela.WhatsApp = New-PainelWhatsApp -Linhas $Linhas
+    $tela.Area.Controls.Add($tela.WhatsApp.Painel)
+    $tela.Resultado = $null
+    $tela.Painel.Tag = $tela
+    $null = New-BotaoTela -Texto 'Salvar' -X 330 -Tela $tela -AoClicar { param($origem) Submit-Configuracoes -Tela $origem.Tag }
+    $null = New-BotaoTela -Texto 'Cancelar' -X 440 -Tela $tela -AoClicar { param($origem) Show-TelaMenu -Janela $origem.FindForm() }
+    return $tela.Painel
+}
 
-    $salvar.Add_Click({
-            $valores = Get-ValoresPainelWhatsApp -Controles $whatsapp
-            $mensagem = Show-ErrosNosCampos -Provedor $provedor -Erros (Get-ErrosDoAssistente -Valores $valores) -Caixas (Get-CaixasWhatsApp -Controles $whatsapp)
-            if ($mensagem) {
-                $erro.Text = $mensagem
-                return
-            }
-            $estado.Resultado = $valores
-            $janela.DialogResult = [System.Windows.Forms.DialogResult]::OK
-            $janela.Close()
-        })
-
-    try {
-        $null = $janela.ShowDialog()
-        return $estado.Resultado
+function Submit-Configuracoes {
+    param([Parameter(Mandatory = $true)][hashtable]$Tela)
+    $valores = Get-ValoresPainelWhatsApp -Controles $Tela.WhatsApp
+    $mensagem = Show-ErrosNosCampos -Provedor $Tela.Provedor -Erros (Get-ErrosDoAssistente -Valores $valores) -Caixas (Get-CaixasWhatsApp -Controles $Tela.WhatsApp)
+    if ($mensagem) {
+        $Tela.Erro.Text = $mensagem
+        return
     }
-    finally {
-        $provedor.Dispose()
-        $janela.Dispose()
-    }
+    $Tela.Resultado = $valores
+    $janela = $Tela.Painel.FindForm()
+    if ($janela) { Submit-PedidoDaJanela -Janela $janela -Acao 'configuracoes-salvar' -Dados $valores -Carregando 'Salvando as configurações...' }
 }

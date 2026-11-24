@@ -1,8 +1,7 @@
-﻿# Desktop shortcut that opens the web system in a browser app window: no tabs,
-# no address bar, only the application.
+﻿# Desktop shortcut to the launcher panel, and the browser app window that the
+# panel opens: no tabs, no address bar, full screen, only the application.
 
 $NOME_ATALHO = 'Doceterapia.lnk'
-$NOME_ATALHO_PAINEL = 'Doceterapia - Painel.lnk'
 $NAVEGADORES_APP = @('msedge.exe', 'chrome.exe')
 
 function Get-CaminhoNavegador {
@@ -32,7 +31,7 @@ function Get-ArgumentosAppNavegador {
         [Parameter(Mandatory = $true)][string]$Url,
         [Parameter(Mandatory = $true)][string]$PastaPerfil
     )
-    return "--app=$Url --user-data-dir=`"$PastaPerfil`" --no-first-run --no-default-browser-check"
+    return "--app=$Url --start-fullscreen --user-data-dir=`"$PastaPerfil`" --no-first-run --no-default-browser-check"
 }
 
 function Save-Atalho {
@@ -61,30 +60,10 @@ function Save-Atalho {
     Write-Texto "Atalho pronto: $Destino"
 }
 
-function New-AtalhoSistema {
-    param(
-        [Parameter(Mandatory = $true)][hashtable]$Ctx,
-        [Parameter(Mandatory = $true)][string]$Url
-    )
-    $destino = Join-Path $Ctx.PastaAtalho $NOME_ATALHO
-    if ($Ctx.Simular) {
-        Write-Simulacao "criaria o atalho $destino abrindo $Url numa janela própria."
-        return $null
-    }
-    $navegador = Get-CaminhoNavegador
-    if (-not $navegador) {
-        Write-Aviso "Nenhum Microsoft Edge ou Google Chrome encontrado; o atalho não foi criado. Abra $Url no navegador."
-        return $null
-    }
-    Save-Atalho -Ctx $Ctx -Destino $destino -Alvo $navegador -Descricao 'Abre o sistema Doceterapia' `
-        -Argumentos (Get-ArgumentosAppNavegador -Url $Url -PastaPerfil $Ctx.PastaPerfilNavegador)
-    return $destino
-}
-
-function New-AtalhoPainel {
+function New-AtalhoDoceterapia {
     # wscript runs the stub with no console window, unlike doceterapia.cmd.
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    $destino = Join-Path $Ctx.PastaAtalho $NOME_ATALHO_PAINEL
+    $destino = Join-Path $Ctx.PastaAtalho $NOME_ATALHO
     if ($Ctx.Simular) {
         Write-Simulacao "criaria o atalho $destino abrindo o painel do Doceterapia."
         return $null

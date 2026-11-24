@@ -1,93 +1,180 @@
-﻿# Actions of the launcher window. Each one runs the subcommand of the same
-# name, so the window and the CLI share every rule and exit code.
+﻿# Command side of the panel: starts the window thread and answers its requests
+# with the subcommands of the same name, so the window and the CLI share every
+# rule and exit code.
 
-$ACOES_COM_PROGRESSO = @('doctor', 'up', 'down', 'backup', 'restore', 'atualizar', 'resetar-banco')
+$ENTRADA_LAUNCHER = Join-Path (Split-Path -Parent $PSScriptRoot) 'doceterapia.ps1'
 
-function Invoke-AcaoComProgresso {
-    # The action returns an exit code. -AcaoFinal adds a button to the finished
-    # window; the result says whether it was clicked.
-    param(
-        [Parameter(Mandatory = $true)][string]$Titulo,
-        [Parameter(Mandatory = $true)][scriptblock]$Acao,
-        [string]$AcaoFinal
-    )
-    Start-JanelaProgresso -Titulo $Titulo
-    $codigo = [int](@(& $Acao)[-1])
-    $sucesso = ($codigo -eq $CODIGO_SUCESSO)
-    $mensagem = if ($sucesso) { 'Concluído.' } else { "$(Get-UltimoErro)" }
-    if (-not $mensagem) { $mensagem = 'A operação não terminou.' }
-    $escolhida = Complete-JanelaProgresso -Sucesso $sucesso -Mensagem $mensagem -AcaoFinal $AcaoFinal
-    return [pscustomobject]@{ Codigo = $codigo; AcaoEscolhida = $escolhida }
+$OPERACOES_DO_MENU = @{
+    'up'            = 'Ligar o sistema'
+    'down'          = 'Desligar o sistema'
+    'backup'        = 'Fazer backup'
+    'atualizar'     = 'Atualizar'
+    'doctor'        = 'Verificar o computador'
+    'resetar-banco' = 'Apagar e recriar o banco'
 }
 
-function Invoke-AcaoDoMenu {
+$SCRIPT_JANELA_PAINEL = {
+    param($estado, $entrada)
+    . $entrada
+    Enable-InterfaceGrafica
+    try {
+        [System.Windows.Forms.Application]::Run((New-JanelaPainel -Estado $estado))
+    }
+    finally {
+        $estado.Fechada = $true
+    }
+}
+
+function Start-ThreadJanelaPainel {
+    param([Parameter(Mandatory = $true)][hashtable]$Estado)
+    $espaco = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+    $espaco.ApartmentState = 'STA'
+    $espaco.ThreadOptions = 'ReuseThread'
+    $espaco.Open()
+    $execucao = [System.Management.Automation.PowerShell]::Create()
+    $execucao.Runspace = $espaco
+    $null = $execucao.AddScript($SCRIPT_JANELA_PAINEL.ToString()).AddArgument($Estado).AddArgument($ENTRADA_LAUNCHER)
+    return @{ Execucao = $execucao; Espaco = $espaco; Resultado = $execucao.BeginInvoke() }
+}
+
+function Wait-ThreadJanelaPainel {
+    # Returns the window thread's errors, so a window that could not open is
+    # still reported.
+    param([Parameter(Mandatory = $true)][hashtable]$Thread)
+    try {
+        $null = $Thread.Execucao.EndInvoke($Thread.Resultado)
+        return @($Thread.Execucao.Streams.Error | ForEach-Object { "$_" })
+    }
+    catch {
+        return @("$($_.Exception.Message)")
+    }
+    finally {
+        $Thread.Execucao.Dispose()
+        $Thread.Espaco.Dispose()
+    }
+}
+
+function Start-Painel {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $estado = New-EstadoPainel
+    $thread = Start-ThreadJanelaPainel -Estado $estado
+    $script:Painel = $estado
+    try {
+        while (-not $estado.Encerrar -and -not $estado.Fechada) {
+            $pedido = $null
+            if ($estado.Pedidos.TryDequeue([ref]$pedido)) {
+                Invoke-PedidoDoPainel -Ctx $Ctx -Pedido $pedido
+            }
+            else {
+                Start-Sleep -Milliseconds 100
+            }
+        }
+    }
+    finally {
+        $script:Painel = $null
+        $erros = @(Wait-ThreadJanelaPainel -Thread $thread)
+    }
+    if ($erros.Count -gt 0) {
+        Write-Erro "O painel foi fechado por um erro: $($erros[0])"
+    }
+}
+
+function Close-Painel {
+    Send-EventoPainel @{ Tipo = 'Fechar' }
+    $script:Painel.Encerrar = $true
+}
+
+function Show-MenuDoPainel {
+    Send-EventoPainel @{ Tipo = 'Menu' }
+}
+
+function Invoke-PedidoDoPainel {
+    # A failure shows its message and returns to the menu; it never closes the
+    # window.
     param(
         [Parameter(Mandatory = $true)][hashtable]$Ctx,
-        [Parameter(Mandatory = $true)][string]$Comando,
-        [Parameter(Mandatory = $true)][string]$Rotulo
+        [Parameter(Mandatory = $true)][hashtable]$Pedido
     )
-    switch ($Comando) {
-        'abrir' { Invoke-AbrirPeloPainel -Ctx $Ctx; return }
-        'configurar' { Invoke-AssistenteConfiguracao -Ctx $Ctx; return }
-        'configuracoes' { Invoke-JanelaConfiguracoes -Ctx $Ctx; return }
-        'ver-logs' { Invoke-VerLogs -Ctx $Ctx; return }
+    $codigo = Invoke-ComTratamento -Acao { Invoke-AcaoDoPainel -Ctx $Ctx -Acao $Pedido.Acao -Dados $Pedido.Dados }
+    if ($codigo -ne $CODIGO_SUCESSO) { Show-MenuDoPainel }
+}
+
+function Invoke-AcaoDoPainel {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][string]$Acao,
+        $Dados
+    )
+    switch ($Acao) {
+        'estado' { Send-EventoPainel @{ Tipo = 'Estado'; Estado = Get-EstadoDoPainel -Ctx $Ctx } }
+        'abrir' { Invoke-AbrirPeloPainel -Ctx $Ctx }
+        'configurar-preparar' { Invoke-PrepararAssistente -Ctx $Ctx }
+        'configurar' { Invoke-ConfigurarPeloPainel -Ctx $Ctx -Respostas $Dados }
+        'configuracoes-preparar' { Invoke-PrepararConfiguracoes -Ctx $Ctx }
+        'configuracoes-salvar' { Invoke-SalvarConfiguracoes -Ctx $Ctx -Valores $Dados }
+        'ver-logs' { Invoke-VerLogs -Ctx $Ctx }
+        'restore' { Invoke-RestaurarPeloPainel -Ctx $Ctx }
+        'criar-atalho' {
+            $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('criar-atalho')
+            Show-MenuDoPainel
+        }
+        'sair' { $script:Painel.Encerrar = $true }
+        default {
+            if (-not $OPERACOES_DO_MENU.ContainsKey($Acao)) {
+                Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Ação desconhecida no painel.'
+            }
+            $acaoFinal = if ($Acao -eq 'up') { 'Abrir sistema' } else { $null }
+            $null = Invoke-OperacaoDoPainel -Titulo $OPERACOES_DO_MENU[$Acao] -AcaoFinal $acaoFinal -Trabalho { Invoke-Doceterapia -Ctx $Ctx -Argumentos @($Acao) }
+        }
     }
-    if ($ACOES_COM_PROGRESSO -notcontains $Comando) {
-        $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @($Comando)
-        return
+}
+
+function Invoke-OperacaoDoPainel {
+    # The work returns an exit code; the window shows the outcome and offers
+    # -AcaoFinal only on success.
+    param(
+        [Parameter(Mandatory = $true)][string]$Titulo,
+        [Parameter(Mandatory = $true)][scriptblock]$Trabalho,
+        [string]$AcaoFinal
+    )
+    Start-OperacaoPainel -Titulo $Titulo
+    $codigo = $CODIGO_USO
+    try {
+        $codigo = [int](@(& $Trabalho)[-1])
     }
-    $argumentos = @($Comando)
-    if ($Comando -eq 'restore') {
-        $pasta = Select-PastaBackup -Ctx $Ctx
-        if (-not $pasta) { return }
-        $argumentos += $pasta
+    finally {
+        $sucesso = ($codigo -eq $CODIGO_SUCESSO)
+        $mensagem = if ($sucesso) { 'Concluído.' } else { "$(Get-UltimoErro)" }
+        if (-not $mensagem) { $mensagem = 'A operação não terminou.' }
+        Complete-OperacaoPainel -Sucesso $sucesso -Mensagem $mensagem -AcaoFinal $AcaoFinal
     }
-    $acaoFinal = if ($Comando -eq 'up') { 'Abrir sistema' } else { $null }
-    $resultado = Invoke-AcaoComProgresso -Titulo $Rotulo -AcaoFinal $acaoFinal -Acao { Invoke-Doceterapia -Ctx $Ctx -Argumentos $argumentos }
-    if ($resultado.AcaoEscolhida) {
-        Invoke-AbrirPeloPainel -Ctx $Ctx
-    }
+    return $codigo
 }
 
 function Get-EstadoDoPainel {
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
     $configurado = Test-Path -LiteralPath $Ctx.CaminhoEnv
-    $url = Get-UrlSistema -Ctx $Ctx
     return [pscustomobject]@{
         Configurado = $configurado
-        Url         = $url
-        Ligado      = ($configurado -and (Test-SistemaRespondendo -Url $url))
+        Ligado      = ($configurado -and (Test-SistemaRespondendo -Url (Get-UrlSistema -Ctx $Ctx)))
     }
 }
 
 function Invoke-AbrirPeloPainel {
-    # A stopped system is offered a start first, so the button always ends on
-    # the open application.
+    # A stopped system is offered a start first. Opening the system ends the
+    # panel and this hidden process.
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
     $url = Get-UrlSistema -Ctx $Ctx
     if (-not (Test-SistemaRespondendo -Url $url)) {
-        if (-not (Read-SimNao -Pergunta 'O sistema está desligado. Ligar agora e abrir em seguida?' -Padrao $true)) { return }
-        $resultado = Invoke-AcaoComProgresso -Titulo 'Ligar o sistema' -Acao { Invoke-Doceterapia -Ctx $Ctx -Argumentos @('up') }
-        if ($resultado.Codigo -ne $CODIGO_SUCESSO) { return }
+        if (-not (Read-SimNao -Pergunta 'O sistema está desligado. Ligar agora e abrir em seguida?' -Padrao $true)) {
+            Show-MenuDoPainel
+            return
+        }
+        $codigo = Invoke-OperacaoDoPainel -Titulo 'Ligar o sistema' -Trabalho { Invoke-Doceterapia -Ctx $Ctx -Argumentos @('up') }
+        if ($codigo -ne $CODIGO_SUCESSO) { return }
     }
     Start-AplicativoNavegador -Ctx $Ctx -Url $url
-}
-
-function Invoke-VerLogs {
-    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    $estado = @{ Servicos = @() }
-    $codigo = Invoke-ComTratamento -Acao {
-        Assert-ConfiguracaoExiste -Ctx $Ctx
-        Assert-DockerLigado -Ctx $Ctx
-        $estado.Servicos = @(Get-ServicosEmExecucao -Ctx $Ctx)
-    }
-    if ($codigo -ne $CODIGO_SUCESSO) { return }
-    if ($estado.Servicos.Count -eq 0) {
-        Show-Mensagem -Texto 'Nenhum serviço está ligado. Ligue o sistema para ver os registros.' -Tipo Aviso
-        return
-    }
-    $servico = Show-EscolhaServico -Servicos $estado.Servicos
-    if ($servico) { Start-ConsoleLogs -Ctx $Ctx -Servico $servico }
+    Close-Painel
 }
 
 function Test-DonaPendente {
@@ -101,17 +188,27 @@ function Test-DonaPendente {
     return (-not (Get-ValorEnv -Linhas $Linhas -Chave 'ADMIN_SENHA') -or -not (Get-ValorEnv -Linhas $Linhas -Chave 'ADMIN_EMAIL'))
 }
 
-function Invoke-AssistenteConfiguracao {
+function Invoke-PrepararAssistente {
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    if ((Invoke-ComTratamento -Acao { Assert-DockerLigado -Ctx $Ctx }) -ne $CODIGO_SUCESSO) { return }
+    Assert-DockerLigado -Ctx $Ctx
     $bancoExiste = Test-BancoExiste -Ctx $Ctx
     $linhas = Read-ConfiguracaoAtual -Ctx $Ctx
-    $respostas = Show-Assistente -Linhas $linhas -PedirDona (Test-DonaPendente -Linhas $linhas -BancoExiste $bancoExiste) -PedirDemo (-not $bancoExiste)
-    if (-not $respostas) { return }
+    Send-EventoPainel @{
+        Tipo      = 'Assistente'
+        Linhas    = @($linhas)
+        PedirDona = (Test-DonaPendente -Linhas $linhas -BancoExiste $bancoExiste)
+        PedirDemo = (-not $bancoExiste)
+    }
+}
 
-    $Ctx.Respostas = $respostas
+function Invoke-ConfigurarPeloPainel {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][hashtable]$Respostas
+    )
+    $Ctx.Respostas = $Respostas
     try {
-        $resultado = Invoke-AcaoComProgresso -Titulo 'Configurar e ligar o sistema' -AcaoFinal 'Abrir sistema' -Acao {
+        $null = Invoke-OperacaoDoPainel -Titulo 'Configurar e ligar o sistema' -AcaoFinal 'Abrir sistema' -Trabalho {
             $codigo = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('init')
             if ($codigo -ne $CODIGO_SUCESSO) { return $codigo }
             Invoke-Doceterapia -Ctx $Ctx -Argumentos @('up')
@@ -120,9 +217,17 @@ function Invoke-AssistenteConfiguracao {
     finally {
         $Ctx.Remove('Respostas')
     }
-    if ($resultado.AcaoEscolhida) {
-        Invoke-AbrirPeloPainel -Ctx $Ctx
+}
+
+function Invoke-PrepararConfiguracoes {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    if (-not (Test-Path -LiteralPath $Ctx.CaminhoEnv)) {
+        Show-Mensagem -Texto 'O sistema ainda não foi configurado. Use primeiro o botão Configurar o sistema.' -Tipo Aviso
+        Show-MenuDoPainel
+        return
     }
+    $linhas = Read-ArquivoEnv -Caminho $Ctx.CaminhoEnv
+    Send-EventoPainel @{ Tipo = 'Configuracoes'; Linhas = @($linhas) }
 }
 
 function Save-Configuracoes {
@@ -144,36 +249,45 @@ function Save-Configuracoes {
     return (Get-PlanoDeReinicio -Antes $antes -Depois $depois)
 }
 
-function Invoke-JanelaConfiguracoes {
-    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    if (-not (Test-Path -LiteralPath $Ctx.CaminhoEnv)) {
-        Show-Mensagem -Texto 'O sistema ainda não foi configurado. Use primeiro o botão Configurar.' -Tipo Aviso
+function Invoke-SalvarConfiguracoes {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][hashtable]$Valores
+    )
+    $plano = Save-Configuracoes -Ctx $Ctx -Valores $Valores
+    if (-not $plano -or (-not $plano.Completo -and $plano.Servicos.Count -eq 0)) {
+        $texto = if ($plano) { 'Configuração salva.' } else { 'Nada foi alterado.' }
+        Show-Mensagem -Texto $texto
+        Show-MenuDoPainel
         return
     }
-    $valores = Show-Configuracoes -Linhas (Read-ArquivoEnv -Caminho $Ctx.CaminhoEnv)
-    if (-not $valores) { return }
-
-    $estado = @{ Plano = $null }
-    if ((Invoke-ComTratamento -Acao { $estado.Plano = Save-Configuracoes -Ctx $Ctx -Valores $valores }) -ne $CODIGO_SUCESSO) { return }
-    $plano = $estado.Plano
-    if (-not $plano) {
-        Show-Mensagem -Texto 'Nada foi alterado.'
-        return
-    }
-    if (-not $plano.Completo -and $plano.Servicos.Count -eq 0) {
-        Show-Mensagem -Texto 'Configuração salva.'
-        return
-    }
-    $null = Invoke-AcaoComProgresso -Titulo 'Aplicar as configurações' -Acao {
+    $null = Invoke-OperacaoDoPainel -Titulo 'Aplicar as configurações' -Trabalho {
         Clear-ResumoDaSessao
         Invoke-ComTratamento -Acao { Invoke-PlanoDeReinicio -Ctx $Ctx -Plano $plano }
     }
 }
 
-function Invoke-MenuPrincipal {
-    # The menu comes back after each action until the window is closed.
+function Invoke-VerLogs {
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    while ($opcao = Show-MenuPrincipal -Estado (Get-EstadoDoPainel -Ctx $Ctx)) {
-        Invoke-AcaoDoMenu -Ctx $Ctx -Comando $opcao.Comando -Rotulo $opcao.Rotulo
+    Assert-ConfiguracaoExiste -Ctx $Ctx
+    Assert-DockerLigado -Ctx $Ctx
+    $servicos = @(Get-ServicosEmExecucao -Ctx $Ctx)
+    if ($servicos.Count -eq 0) {
+        Show-Mensagem -Texto 'Nenhum serviço está ligado. Ligue o sistema para ver os registros.' -Tipo Aviso
     }
+    else {
+        $servico = Show-EscolhaServico -Servicos $servicos
+        if ($servico) { Start-ConsoleLogs -Ctx $Ctx -Servico $servico }
+    }
+    Show-MenuDoPainel
+}
+
+function Invoke-RestaurarPeloPainel {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $pasta = Select-PastaBackup -PastaInicial $Ctx.PastaBackups
+    if (-not $pasta) {
+        Show-MenuDoPainel
+        return
+    }
+    $null = Invoke-OperacaoDoPainel -Titulo 'Restaurar um backup' -Trabalho { Invoke-Doceterapia -Ctx $Ctx -Argumentos @('restore', $pasta) }
 }

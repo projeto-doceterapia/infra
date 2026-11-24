@@ -105,7 +105,7 @@ function Invoke-SubidaCompleta {
     Write-AvisosAssistente -Linhas $linhas
     Write-EnderecosDoSistema -Linhas $linhas
     Set-EtapaProgresso 'Criando o atalho na Área de Trabalho'
-    $null = New-AtalhoSistema -Ctx $Ctx -Url "http://localhost:$(Get-PortaFrontEnd -Linhas $linhas)"
+    $null = New-AtalhoDoceterapia -Ctx $Ctx
 }
 
 function Invoke-ComandoUp {

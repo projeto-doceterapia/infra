@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho', 'Progresso', 'Assistente', 'Painel') {
+foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho', 'CanalPainel', 'Telas', 'Assistente', 'Painel') {
     . (Join-Path $PSScriptRoot "lib\$biblioteca.ps1")
 }
 foreach ($arquivoComando in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'comandos') -Filter '*.ps1') {
@@ -54,7 +54,7 @@ function Invoke-Doceterapia {
 
             if ($resto.Count -eq 0) {
                 if (Test-InterfaceGrafica) {
-                    Invoke-MenuPrincipal -Ctx $Ctx
+                    Start-Painel -Ctx $Ctx
                     return
                 }
                 Invoke-ComandoAjuda
@@ -71,7 +71,7 @@ function Invoke-Doceterapia {
                 'init' { Assert-SemArgumentos $extras; $null = Invoke-ComandoInit -Ctx $Ctx }
                 'up' { Assert-SemArgumentos $extras; $null = Invoke-ComandoUp -Ctx $Ctx }
                 'abrir' { Assert-SemArgumentos $extras; Invoke-AbrirSistema -Ctx $Ctx }
-                'criar-atalhos' { Assert-SemArgumentos $extras; Invoke-ComandoCriarAtalhos -Ctx $Ctx }
+                'criar-atalho' { Assert-SemArgumentos $extras; Invoke-ComandoCriarAtalho -Ctx $Ctx }
                 'aplicar' { $null = Invoke-ComandoAplicar -Ctx $Ctx -Extras $extras }
                 'down' { $null = Invoke-ComandoDown -Ctx $Ctx -Extras $extras }
                 'backup' { Assert-SemArgumentos $extras; $null = Invoke-ComandoBackup -Ctx $Ctx }
