@@ -59,6 +59,9 @@ sem credencial nunca ficaria saudável e impediria a subida.
 O `doceterapia.cmd` sem argumentos chama o `doceterapia.vbs`, que abre o painel com o PowerShell
 oculto. Com argumentos, o `.cmd` continua sendo o terminal descrito acima.
 
+Só um painel roda por vez: clicar de novo no atalho, com o painel aberto ou escondido atrás do
+sistema, traz o painel existente para a frente em vez de abrir outro.
+
 O painel é uma janela só: o menu, o andamento das operações, o assistente e as configurações são
 telas que se trocam dentro dela. Ao escolher uma ação, a janela mostra na hora uma tela de
 carregamento, enquanto a próxima tela é preparada.
@@ -69,9 +72,10 @@ carregamento, enquanto a próxima tela é preparada.
   está parado e abre o Microsoft Edge (ou o Google Chrome) em modo aplicativo e em tela cheia, sem
   abas nem barra de endereço, na porta configurada, com um perfil separado em
   `%LOCALAPPDATA%\Doceterapia\navegador`. Para sair da tela cheia, use F11; para fechar, Alt+F4.
-  Sem Edge nem Chrome, o endereço abre no navegador padrão. Ao abrir o sistema, o painel fecha e o
-  PowerShell oculto termina. Antes da primeira configuração, o botão principal é `Configurar o
-  sistema`.
+  Sem Edge nem Chrome, o endereço abre no navegador padrão. O painel mostra "Abrindo o sistema..."
+  até a janela do sistema aparecer e então se esconde; quando essa janela fecha, o painel volta ao
+  menu. Se a janela não aparecer em 30 segundos, o painel volta ao menu. Antes da primeira
+  configuração, o botão principal é `Configurar o sistema`.
 - **Configurar (primeira vez):** assistente de até três telas, com Voltar, Avançar e Concluir:
   conta da DONA (só enquanto não há banco), WhatsApp (canal, telefone e chaves, com a opção de
   configurar as chaves depois) e resumo. Cada tela confere os campos antes de avançar e marca o
