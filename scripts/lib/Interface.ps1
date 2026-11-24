@@ -8,7 +8,8 @@ $script:InterfaceGrafica = $false
 
 $OPCOES_MENU = @(
     @{ Rotulo = 'Verificar o computador'; Comando = 'doctor' },
-    @{ Rotulo = 'Configurar'; Comando = 'init' },
+    @{ Rotulo = 'Configurar (primeira vez)'; Comando = 'configurar' },
+    @{ Rotulo = 'Configurações do WhatsApp'; Comando = 'configuracoes' },
     @{ Rotulo = 'Ligar o sistema'; Comando = 'up' },
     @{ Rotulo = 'Abrir o sistema'; Comando = 'abrir' },
     @{ Rotulo = 'Desligar o sistema'; Comando = 'down' },

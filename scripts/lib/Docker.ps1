@@ -198,6 +198,13 @@ function Stop-ServicoNaoPronto {
     Stop-Launcher -Codigo $CODIGO_SERVICO -Mensagem "O serviço $servico não ficou pronto em 5 minutos. Veja: doceterapia logs $servico"
 }
 
+function Get-ServicosEmExecucao {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $resultado = Invoke-Compose -Ctx $Ctx -Argumentos @('ps', '--services', '--status', 'running') -Capturar
+    if ($resultado.Codigo -ne 0) { return @() }
+    return @($resultado.Saida | Where-Object { $_ } | Sort-Object)
+}
+
 function Get-ServicosValidos {
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
     $resultado = Invoke-Compose -Ctx $Ctx -Argumentos @('config', '--services') -Capturar

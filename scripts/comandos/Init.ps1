@@ -17,8 +17,8 @@ function Read-TelefoneBeneficiaria {
     for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
         $digitado = "$(Read-Entrada -Pergunta "Telefone da beneficiária no formato +5511900000001 [$atual]")".Trim()
         if (-not $digitado) { return $atual }
-        if ($digitado -match '^\+[1-9]\d{7,14}$') { return $digitado }
-        Write-Aviso 'Telefone inválido. Use o formato +5511900000001.'
+        if (Test-TelefoneValido $digitado) { return $digitado }
+        Write-Aviso $MENSAGEM_TELEFONE_INVALIDO
     }
     return $atual
 }
@@ -45,7 +45,7 @@ function Set-TokenAdiavel {
             Set-ValorEnv -Linhas $Linhas -Chave $Chave -Valor (ConvertTo-ValorLiteral $digitado)
             return
         }
-        Write-Aviso 'O valor não pode ter aspas simples, quebra de linha nem terminar com barra invertida.'
+        Write-Aviso $MENSAGEM_VALOR_INVALIDO
     }
 }
 
@@ -55,12 +55,12 @@ function Set-DominioNgrok {
     for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
         $digitado = "$(Read-Entrada -Pergunta 'Domínio fixo do ngrok (Enter para adiar)')".Trim()
         if (-not $digitado) { return }
-        $dominio = $digitado -replace '^https?://', '' -replace '/+$', ''
-        if ($dominio -match '^[A-Za-z0-9.\-]+$') {
+        $dominio = ConvertTo-DominioNgrok $digitado
+        if ($dominio) {
             Set-ValorEnv -Linhas $Linhas -Chave 'NGROK_DOMAIN' -Valor $dominio
             return
         }
-        Write-Aviso 'Domínio inválido. Exemplo: meu-dominio.ngrok-free.app'
+        Write-Aviso $MENSAGEM_DOMINIO_INVALIDO
     }
 }
 
@@ -83,14 +83,14 @@ function Set-RespostasDoInit {
     Set-ValorEnv -Linhas $Linhas -Chave 'CHANNEL' -Valor $canal
     Set-ValorEnv -Linhas $Linhas -Chave 'BENEFICIARIA_TELEFONE' -Valor (Read-TelefoneBeneficiaria -Linhas $Linhas)
 
-    if ($canal -eq 'cloud_api') {
-        Set-TokenAdiavel -Linhas $Linhas -Chave 'CLOUD_API_PHONE_ID' -Pergunta 'Identificador do número na Cloud API'
-        Set-TokenAdiavel -Linhas $Linhas -Chave 'CLOUD_API_TOKEN' -Pergunta 'Token da Cloud API' -Oculto
-        Set-TokenAdiavel -Linhas $Linhas -Chave 'CLOUD_API_APP_SECRET' -Pergunta 'Segredo do aplicativo da Cloud API' -Oculto
-        Set-TokenAdiavel -Linhas $Linhas -Chave 'NGROK_AUTHTOKEN' -Pergunta 'Token do ngrok' -Oculto
-        Set-DominioNgrok -Linhas $Linhas
+    foreach ($campo in (Get-CamposDoCanal -Canal $canal)) {
+        if ($campo.Chave -eq 'NGROK_DOMAIN') {
+            Set-DominioNgrok -Linhas $Linhas
+        }
+        else {
+            Set-TokenAdiavel -Linhas $Linhas -Chave $campo.Chave -Pergunta $campo.Rotulo -Oculto:$campo.Oculto
+        }
     }
-    Set-TokenAdiavel -Linhas $Linhas -Chave 'GEMINI_API_KEY' -Pergunta 'Chave do Gemini' -Oculto
 }
 
 function Invoke-ComandoInit {
@@ -115,6 +115,9 @@ function Invoke-ComandoInit {
     $bancoExiste = Test-BancoExiste -Ctx $Ctx
     if ($Ctx.Simular) {
         Write-Simulacao 'perguntaria nome, e-mail e senha da DONA, dados de demonstração, canal, telefone e tokens externos.'
+    }
+    elseif ($Ctx.Respostas) {
+        Set-RespostasInformadas -Linhas $linhas -BancoExiste $bancoExiste -Respostas $Ctx.Respostas
     }
     else {
         Set-RespostasDoInit -Linhas $linhas -BancoExiste $bancoExiste

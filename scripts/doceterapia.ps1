@@ -4,61 +4,19 @@
 
 $ErrorActionPreference = 'Stop'
 
-foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho', 'Progresso', 'Painel') {
+foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho', 'Progresso', 'Assistente', 'Painel') {
     . (Join-Path $PSScriptRoot "lib\$biblioteca.ps1")
 }
 foreach ($arquivoComando in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'comandos') -Filter '*.ps1') {
     . $arquivoComando.FullName
 }
 
-function Invoke-Doceterapia {
-    param(
-        [string[]]$Argumentos = @(),
-        [hashtable]$Ctx
-    )
-
-    Clear-ResumoDaSessao
+function Invoke-ComTratamento {
+    # Runs an action and turns failures into a PT-BR message and a fixed exit
+    # code. Shared by the CLI and the window actions.
+    param([Parameter(Mandatory = $true)][scriptblock]$Acao)
     try {
-        $simular = @($Argumentos | Where-Object { $_ -ieq '-Simular' }).Count -gt 0
-        $resto = @($Argumentos | Where-Object { $_ -ine '-Simular' })
-
-        if (-not $Ctx) {
-            $Ctx = New-ContextoLauncher -Raiz (Split-Path -Parent $PSScriptRoot)
-        }
-        $Ctx.Simular = $simular
-
-        if ($resto.Count -eq 0) {
-            if (Test-InterfaceGrafica) {
-                Invoke-MenuPrincipal -Ctx $Ctx
-                return $CODIGO_SUCESSO
-            }
-            Invoke-ComandoAjuda
-            Wait-Enter
-            return $CODIGO_SUCESSO
-        }
-
-        $comando = $resto[0].ToLowerInvariant()
-        $extras = @($resto | Select-Object -Skip 1)
-
-        switch -Exact ($comando) {
-            'ajuda' { $null = Invoke-ComandoAjuda }
-            'doctor' { Assert-SemArgumentos $extras; $null = Invoke-ComandoDoctor -Ctx $Ctx }
-            'init' { Assert-SemArgumentos $extras; $null = Invoke-ComandoInit -Ctx $Ctx }
-            'up' { Assert-SemArgumentos $extras; $null = Invoke-ComandoUp -Ctx $Ctx }
-            'abrir' { Assert-SemArgumentos $extras; Invoke-AbrirSistema -Ctx $Ctx }
-            'aplicar' { $null = Invoke-ComandoAplicar -Ctx $Ctx -Extras $extras }
-            'down' { $null = Invoke-ComandoDown -Ctx $Ctx -Extras $extras }
-            'backup' { Assert-SemArgumentos $extras; $null = Invoke-ComandoBackup -Ctx $Ctx }
-            'restore' { $null = Invoke-ComandoRestore -Ctx $Ctx -Extras $extras }
-            'atualizar' { Assert-SemArgumentos $extras; $null = Invoke-ComandoAtualizar -Ctx $Ctx }
-            'logs' { $null = Invoke-ComandoLogs -Ctx $Ctx -Extras $extras }
-            'resetar-banco' { Assert-SemArgumentos $extras; $null = Invoke-ComandoResetarBanco -Ctx $Ctx }
-            default { Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Comando desconhecido. Rode: doceterapia ajuda' }
-        }
-        $resumo = Get-ResumoDaSessao
-        if ($resumo -and (Test-InterfaceGrafica) -and -not (Test-JanelaProgresso)) {
-            Show-Mensagem -Texto $resumo
-        }
+        $null = & $Acao
         return $CODIGO_SUCESSO
     }
     catch [System.Management.Automation.CommandNotFoundException] {
@@ -76,6 +34,57 @@ function Invoke-Doceterapia {
         }
         return [int]$codigo
     }
+}
+
+function Invoke-Doceterapia {
+    param(
+        [string[]]$Argumentos = @(),
+        [hashtable]$Ctx
+    )
+
+    Clear-ResumoDaSessao
+    return (Invoke-ComTratamento -Acao {
+            $simular = @($Argumentos | Where-Object { $_ -ieq '-Simular' }).Count -gt 0
+            $resto = @($Argumentos | Where-Object { $_ -ine '-Simular' })
+
+            if (-not $Ctx) {
+                $Ctx = New-ContextoLauncher -Raiz (Split-Path -Parent $PSScriptRoot)
+            }
+            $Ctx.Simular = $simular
+
+            if ($resto.Count -eq 0) {
+                if (Test-InterfaceGrafica) {
+                    Invoke-MenuPrincipal -Ctx $Ctx
+                    return
+                }
+                Invoke-ComandoAjuda
+                Wait-Enter
+                return
+            }
+
+            $comando = $resto[0].ToLowerInvariant()
+            $extras = @($resto | Select-Object -Skip 1)
+
+            switch -Exact ($comando) {
+                'ajuda' { $null = Invoke-ComandoAjuda }
+                'doctor' { Assert-SemArgumentos $extras; $null = Invoke-ComandoDoctor -Ctx $Ctx }
+                'init' { Assert-SemArgumentos $extras; $null = Invoke-ComandoInit -Ctx $Ctx }
+                'up' { Assert-SemArgumentos $extras; $null = Invoke-ComandoUp -Ctx $Ctx }
+                'abrir' { Assert-SemArgumentos $extras; Invoke-AbrirSistema -Ctx $Ctx }
+                'aplicar' { $null = Invoke-ComandoAplicar -Ctx $Ctx -Extras $extras }
+                'down' { $null = Invoke-ComandoDown -Ctx $Ctx -Extras $extras }
+                'backup' { Assert-SemArgumentos $extras; $null = Invoke-ComandoBackup -Ctx $Ctx }
+                'restore' { $null = Invoke-ComandoRestore -Ctx $Ctx -Extras $extras }
+                'atualizar' { Assert-SemArgumentos $extras; $null = Invoke-ComandoAtualizar -Ctx $Ctx }
+                'logs' { $null = Invoke-ComandoLogs -Ctx $Ctx -Extras $extras }
+                'resetar-banco' { Assert-SemArgumentos $extras; $null = Invoke-ComandoResetarBanco -Ctx $Ctx }
+                default { Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Comando desconhecido. Rode: doceterapia ajuda' }
+            }
+            $resumo = Get-ResumoDaSessao
+            if ($resumo -and (Test-InterfaceGrafica) -and -not (Test-JanelaProgresso)) {
+                Show-Mensagem -Texto $resumo
+            }
+        })
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

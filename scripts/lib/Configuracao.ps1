@@ -6,6 +6,35 @@ $CHAVES_ASSISTENTE_CLOUD_API = @(
 )
 $CHAVES_ASSISTENTE_BAILEYS = @('GEMINI_API_KEY')
 
+# External values asked by init and edited later in the settings window. Canal
+# names the only channel that uses the key; $null means every channel.
+$CAMPOS_EXTERNOS = @(
+    @{ Chave = 'CLOUD_API_PHONE_ID'; Rotulo = 'Identificador do número na Cloud API'; Oculto = $false; Canal = 'cloud_api' },
+    @{ Chave = 'CLOUD_API_TOKEN'; Rotulo = 'Token da Cloud API'; Oculto = $true; Canal = 'cloud_api' },
+    @{ Chave = 'CLOUD_API_APP_SECRET'; Rotulo = 'Segredo do aplicativo da Cloud API'; Oculto = $true; Canal = 'cloud_api' },
+    @{ Chave = 'NGROK_AUTHTOKEN'; Rotulo = 'Token do ngrok'; Oculto = $true; Canal = 'cloud_api' },
+    @{ Chave = 'NGROK_DOMAIN'; Rotulo = 'Domínio fixo do ngrok'; Oculto = $false; Canal = 'cloud_api' },
+    @{ Chave = 'GEMINI_API_KEY'; Rotulo = 'Chave do Gemini'; Oculto = $true; Canal = $null }
+)
+
+# Services that read each editable key, so a settings change recreates only
+# them. CHANNEL is absent on purpose: it changes the active profiles.
+$SERVICOS_POR_CHAVE = @{
+    BENEFICIARIA_TELEFONE = 'orquestrador'
+    CLOUD_API_PHONE_ID    = 'orquestrador'
+    CLOUD_API_TOKEN       = 'orquestrador'
+    CLOUD_API_APP_SECRET  = 'orquestrador'
+    GEMINI_API_KEY        = 'orquestrador'
+    NGROK_AUTHTOKEN       = 'ngrok'
+    NGROK_DOMAIN          = 'ngrok'
+}
+
+$MENSAGEM_VALOR_INVALIDO = 'O valor não pode ter aspas simples, quebra de linha nem terminar com barra invertida.'
+$MENSAGEM_TELEFONE_INVALIDO = 'Telefone inválido. Use o formato +5511900000001.'
+$MENSAGEM_DOMINIO_INVALIDO = 'Domínio inválido. Exemplo: meu-dominio.ngrok-free.app'
+$MENSAGEM_NOME_INVALIDO = 'O nome precisa ter de 3 a 50 caracteres, sem aspas simples e sem terminar com barra invertida.'
+$MENSAGEM_SENHA_INVALIDA = 'A senha precisa ter de 6 a 20 caracteres, sem aspas simples e sem terminar com barra invertida.'
+
 function Set-SegredosGerados {
     # Fills only what is still missing or a placeholder: a secret already chosen
     # is never replaced, since the database and sessions depend on it.
@@ -82,11 +111,132 @@ function Test-NomeDonaValido {
     return ($Nome.Length -ge 3 -and $Nome.Length -le 50 -and (Test-ValorDigitavel $Nome))
 }
 
+function Test-TelefoneValido {
+    param([AllowEmptyString()][string]$Telefone)
+    return ($Telefone -match '^\+[1-9]\d{7,14}$')
+}
+
+function ConvertTo-DominioNgrok {
+    # Accepts a pasted URL; returns $null when what is left is not a host name.
+    param([AllowEmptyString()][string]$Valor)
+    $dominio = $Valor.Trim() -replace '^https?://', '' -replace '/+$', ''
+    if ($dominio -match '^[A-Za-z0-9.\-]+$') { return $dominio }
+    return $null
+}
+
+function Get-CamposDoCanal {
+    param([Parameter(Mandatory = $true)][string]$Canal)
+    return @($CAMPOS_EXTERNOS | Where-Object { -not $_.Canal -or $_.Canal -eq $Canal })
+}
+
+function Get-ErrosDaDona {
+    # One message per field, for inline display; empty when all is valid.
+    param(
+        [AllowEmptyString()][string]$Nome = '',
+        [AllowEmptyString()][string]$Email = '',
+        [AllowEmptyString()][string]$Senha = '',
+        [AllowEmptyString()][string]$Confirmacao = ''
+    )
+    $erros = @{}
+    if (-not (Test-NomeDonaValido $Nome.Trim())) { $erros.Nome = $MENSAGEM_NOME_INVALIDO }
+    if (-not (Test-EmailValido $Email.Trim())) { $erros.Email = 'E-mail inválido. Exemplo: dona@exemplo.com' }
+    if (-not (Test-SenhaDonaValida $Senha)) { $erros.Senha = $MENSAGEM_SENHA_INVALIDA }
+    elseif ($Senha -cne $Confirmacao) { $erros.Confirmacao = 'As senhas não são iguais.' }
+    return $erros
+}
+
+function Get-ErrosDoAssistente {
+    # Values are keyed by env key. A blank value keeps what is configured.
+    param([Parameter(Mandatory = $true)][hashtable]$Valores)
+    $erros = @{}
+    foreach ($chave in @($Valores.Keys)) {
+        $valor = "$($Valores[$chave])".Trim()
+        if (-not $valor) { continue }
+        switch ($chave) {
+            'CHANNEL' { if ($valor -cnotin 'cloud_api', 'baileys') { $erros[$chave] = 'Escolha cloud_api ou baileys.' } }
+            'BENEFICIARIA_TELEFONE' { if (-not (Test-TelefoneValido $valor)) { $erros[$chave] = $MENSAGEM_TELEFONE_INVALIDO } }
+            'NGROK_DOMAIN' { if (-not (ConvertTo-DominioNgrok $valor)) { $erros[$chave] = $MENSAGEM_DOMINIO_INVALIDO } }
+            default { if (-not (Test-ValorDigitavel $valor)) { $erros[$chave] = $MENSAGEM_VALOR_INVALIDO } }
+        }
+    }
+    return $erros
+}
+
+function Set-ValoresDoAssistente {
+    # Writes only the values given; the caller validated them first.
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas,
+        [Parameter(Mandatory = $true)][hashtable]$Valores
+    )
+    foreach ($chave in @($Valores.Keys)) {
+        $valor = "$($Valores[$chave])".Trim()
+        if (-not $valor) { continue }
+        switch ($chave) {
+            'CHANNEL' { Set-ValorEnv -Linhas $Linhas -Chave $chave -Valor $valor }
+            'BENEFICIARIA_TELEFONE' { Set-ValorEnv -Linhas $Linhas -Chave $chave -Valor $valor }
+            'NGROK_DOMAIN' { Set-ValorEnv -Linhas $Linhas -Chave $chave -Valor (ConvertTo-DominioNgrok $valor) }
+            default { Set-ValorEnv -Linhas $Linhas -Chave $chave -Valor (ConvertTo-ValorLiteral $valor) }
+        }
+    }
+}
+
+function Set-RespostasInformadas {
+    # The window's path into init: the same rules as the console questions.
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas,
+        [Parameter(Mandatory = $true)][bool]$BancoExiste,
+        [Parameter(Mandatory = $true)][hashtable]$Respostas
+    )
+    if (-not $BancoExiste) {
+        if ($Respostas.Dona) {
+            $dona = $Respostas.Dona
+            $erros = Get-ErrosDaDona -Nome "$($dona.Nome)" -Email "$($dona.Email)" -Senha "$($dona.Senha)" -Confirmacao "$($dona.Senha)"
+            if ($erros.Count -gt 0) {
+                Stop-Launcher -Codigo $CODIGO_USO -Mensagem (@($erros.Values)[0])
+            }
+            Set-CredenciaisDona -Linhas $Linhas -Credenciais @{ Nome = "$($dona.Nome)".Trim(); Email = "$($dona.Email)".Trim(); Senha = $dona.Senha }
+        }
+        elseif (-not (Get-ValorEnv -Linhas $Linhas -Chave 'ADMIN_SENHA') -or -not (Get-ValorEnv -Linhas $Linhas -Chave 'ADMIN_EMAIL')) {
+            Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Informe o e-mail e a senha da DONA.'
+        }
+        Set-ValorEnv -Linhas $Linhas -Chave 'DEMO_DATA' -Valor $(if ($Respostas.Demo) { 'true' } else { 'false' })
+    }
+    $valores = if ($Respostas.Valores) { $Respostas.Valores } else { @{} }
+    $erros = Get-ErrosDoAssistente -Valores $valores
+    if ($erros.Count -gt 0) {
+        Stop-Launcher -Codigo $CODIGO_USO -Mensagem (@($erros.Values)[0])
+    }
+    Set-ValoresDoAssistente -Linhas $Linhas -Valores $valores
+}
+
+function Get-PlanoDeReinicio {
+    # Completo when the active profiles change: services of the old profile must
+    # stop, so the stack goes down and up. Otherwise only the readers restart.
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Antes,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Depois
+    )
+    $perfisAntes = @(Get-PerfisAtivos -Linhas $Antes) -join ','
+    $perfisDepois = @(Get-PerfisAtivos -Linhas $Depois)
+    $canalMudou = (Get-ValorEnv -Linhas $Antes -Chave 'CHANNEL') -cne (Get-ValorEnv -Linhas $Depois -Chave 'CHANNEL')
+    if ($canalMudou -or $perfisAntes -cne ($perfisDepois -join ',')) {
+        return [pscustomobject]@{ Completo = $true; Servicos = @() }
+    }
+    $servicos = @()
+    foreach ($chave in $SERVICOS_POR_CHAVE.Keys) {
+        if ((Get-ValorEnv -Linhas $Antes -Chave $chave) -ceq (Get-ValorEnv -Linhas $Depois -Chave $chave)) { continue }
+        $servico = $SERVICOS_POR_CHAVE[$chave]
+        if ($servico -eq 'ngrok' -and $perfisDepois -notcontains 'tunnel') { continue }
+        if ($servicos -notcontains $servico) { $servicos += $servico }
+    }
+    return [pscustomobject]@{ Completo = $false; Servicos = @($servicos | Sort-Object) }
+}
+
 function Read-NomeDona {
     for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
         $digitado = "$(Read-Entrada -Pergunta 'Nome da DONA (Enter para usar Dona)')".Trim()
         if (Test-NomeDonaValido $digitado) { return $digitado }
-        Write-Aviso 'O nome precisa ter de 3 a 50 caracteres, sem aspas simples e sem terminar com barra invertida.'
+        Write-Aviso $MENSAGEM_NOME_INVALIDO
     }
     Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Nome não aceito. Rode o comando de novo.'
 }
@@ -111,7 +261,7 @@ function Read-CredenciaisDona {
     for ($tentativa = 0; $tentativa -lt 3; $tentativa++) {
         $senha = Read-SenhaOculta -Pergunta 'Senha da DONA (6 a 20 caracteres)'
         if (-not (Test-SenhaDonaValida $senha)) {
-            Write-Aviso 'A senha precisa ter de 6 a 20 caracteres, sem aspas simples e sem terminar com barra invertida.'
+            Write-Aviso $MENSAGEM_SENHA_INVALIDA
             continue
         }
         $confirmacao = Read-SenhaOculta -Pergunta 'Repita a senha'

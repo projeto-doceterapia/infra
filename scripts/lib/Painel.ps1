@@ -1,19 +1,18 @@
 ﻿# Actions of the launcher window. Each one runs the subcommand of the same
 # name, so the window and the CLI share every rule and exit code.
 
-$ACOES_COM_PROGRESSO = @('doctor', 'init', 'up', 'down', 'backup', 'restore', 'atualizar', 'resetar-banco')
+$ACOES_COM_PROGRESSO = @('doctor', 'up', 'down', 'backup', 'restore', 'atualizar', 'resetar-banco')
 
 function Invoke-AcaoComProgresso {
-    # Returns the exit code; -AcaoFinal adds a button to the finished window and
-    # the code is then paired with whether it was clicked.
+    # The action returns an exit code. -AcaoFinal adds a button to the finished
+    # window; the result says whether it was clicked.
     param(
-        [Parameter(Mandatory = $true)][hashtable]$Ctx,
         [Parameter(Mandatory = $true)][string]$Titulo,
-        [Parameter(Mandatory = $true)][string[]]$Argumentos,
+        [Parameter(Mandatory = $true)][scriptblock]$Acao,
         [string]$AcaoFinal
     )
     Start-JanelaProgresso -Titulo $Titulo
-    $codigo = Invoke-Doceterapia -Ctx $Ctx -Argumentos $Argumentos
+    $codigo = [int](@(& $Acao)[-1])
     $sucesso = ($codigo -eq $CODIGO_SUCESSO)
     $mensagem = if ($sucesso) { 'Concluído.' } else { "$(Get-UltimoErro)" }
     if (-not $mensagem) { $mensagem = 'A operação não terminou.' }
@@ -27,6 +26,10 @@ function Invoke-AcaoDoMenu {
         [Parameter(Mandatory = $true)][string]$Comando,
         [Parameter(Mandatory = $true)][string]$Rotulo
     )
+    switch ($Comando) {
+        'configurar' { Invoke-AssistenteConfiguracao -Ctx $Ctx; return }
+        'configuracoes' { Invoke-JanelaConfiguracoes -Ctx $Ctx; return }
+    }
     if ($ACOES_COM_PROGRESSO -notcontains $Comando) {
         $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @($Comando)
         return
@@ -38,9 +41,89 @@ function Invoke-AcaoDoMenu {
         $argumentos += $pasta
     }
     $acaoFinal = if ($Comando -eq 'up') { 'Abrir sistema' } else { $null }
-    $resultado = Invoke-AcaoComProgresso -Ctx $Ctx -Titulo $Rotulo -Argumentos $argumentos -AcaoFinal $acaoFinal
+    $resultado = Invoke-AcaoComProgresso -Titulo $Rotulo -AcaoFinal $acaoFinal -Acao { Invoke-Doceterapia -Ctx $Ctx -Argumentos $argumentos }
     if ($resultado.AcaoEscolhida) {
         $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('abrir')
+    }
+}
+
+function Test-DonaPendente {
+    # Mirrors init: the owner is asked only while no database exists and the env
+    # file lacks the e-mail or the password.
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()]$Linhas,
+        [Parameter(Mandatory = $true)][bool]$BancoExiste
+    )
+    if ($BancoExiste) { return $false }
+    return (-not (Get-ValorEnv -Linhas $Linhas -Chave 'ADMIN_SENHA') -or -not (Get-ValorEnv -Linhas $Linhas -Chave 'ADMIN_EMAIL'))
+}
+
+function Invoke-AssistenteConfiguracao {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    if ((Invoke-ComTratamento -Acao { Assert-DockerLigado -Ctx $Ctx }) -ne $CODIGO_SUCESSO) { return }
+    $bancoExiste = Test-BancoExiste -Ctx $Ctx
+    $linhas = Read-ConfiguracaoAtual -Ctx $Ctx
+    $respostas = Show-Assistente -Linhas $linhas -PedirDona (Test-DonaPendente -Linhas $linhas -BancoExiste $bancoExiste) -PedirDemo (-not $bancoExiste)
+    if (-not $respostas) { return }
+
+    $Ctx.Respostas = $respostas
+    try {
+        $resultado = Invoke-AcaoComProgresso -Titulo 'Configurar e ligar o sistema' -AcaoFinal 'Abrir sistema' -Acao {
+            $codigo = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('init')
+            if ($codigo -ne $CODIGO_SUCESSO) { return $codigo }
+            Invoke-Doceterapia -Ctx $Ctx -Argumentos @('up')
+        }
+    }
+    finally {
+        $Ctx.Remove('Respostas')
+    }
+    if ($resultado.AcaoEscolhida) {
+        $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('abrir')
+    }
+}
+
+function Save-Configuracoes {
+    # Writes the settings and returns the restart plan, or $null when nothing
+    # changed.
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][hashtable]$Valores
+    )
+    $erros = Get-ErrosDoAssistente -Valores $Valores
+    if ($erros.Count -gt 0) {
+        Stop-Launcher -Codigo $CODIGO_USO -Mensagem (@($erros.Values)[0])
+    }
+    $antes = Read-ArquivoEnv -Caminho $Ctx.CaminhoEnv
+    $depois = Read-ArquivoEnv -Caminho $Ctx.CaminhoEnv
+    Set-ValoresDoAssistente -Linhas $depois -Valores $Valores
+    if (($antes -join "`n") -ceq ($depois -join "`n")) { return $null }
+    Write-ArquivoEnv -Ctx $Ctx -Linhas $depois
+    return (Get-PlanoDeReinicio -Antes $antes -Depois $depois)
+}
+
+function Invoke-JanelaConfiguracoes {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    if (-not (Test-Path -LiteralPath $Ctx.CaminhoEnv)) {
+        Show-Mensagem -Texto 'O sistema ainda não foi configurado. Use primeiro o botão Configurar.' -Tipo Aviso
+        return
+    }
+    $valores = Show-Configuracoes -Linhas (Read-ArquivoEnv -Caminho $Ctx.CaminhoEnv)
+    if (-not $valores) { return }
+
+    $estado = @{ Plano = $null }
+    if ((Invoke-ComTratamento -Acao { $estado.Plano = Save-Configuracoes -Ctx $Ctx -Valores $valores }) -ne $CODIGO_SUCESSO) { return }
+    $plano = $estado.Plano
+    if (-not $plano) {
+        Show-Mensagem -Texto 'Nada foi alterado.'
+        return
+    }
+    if (-not $plano.Completo -and $plano.Servicos.Count -eq 0) {
+        Show-Mensagem -Texto 'Configuração salva.'
+        return
+    }
+    $null = Invoke-AcaoComProgresso -Titulo 'Aplicar as configurações' -Acao {
+        Clear-ResumoDaSessao
+        Invoke-ComTratamento -Acao { Invoke-PlanoDeReinicio -Ctx $Ctx -Plano $plano }
     }
 }
 
