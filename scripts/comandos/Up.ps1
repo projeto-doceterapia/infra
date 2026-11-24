@@ -93,22 +93,19 @@ function Write-EnderecosDoSistema {
 function Invoke-SubidaCompleta {
     # Shared by up, atualizar and resetar-banco.
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    Set-EtapaProgresso 'Conferindo as imagens (o primeiro download pode demorar)'
     Invoke-ImagensFaltantes -Ctx $Ctx
+    Set-EtapaProgresso 'Ligando os serviços (pode levar alguns minutos)'
     if (-not (Invoke-SubidaAguardando -Ctx $Ctx)) {
         Stop-ServicoNaoPronto -Ctx $Ctx
     }
+    Set-EtapaProgresso 'Confirmando o primeiro acesso'
     Confirm-UsuarioInicial -Ctx $Ctx
     $linhas = Read-ConfiguracaoAtual -Ctx $Ctx
     Write-AvisosAssistente -Linhas $linhas
     Write-EnderecosDoSistema -Linhas $linhas
-    $atalho = New-AtalhoSistema -Ctx $Ctx -Url "http://localhost:$(Get-PortaFrontEnd -Linhas $linhas)"
-    if ($atalho -and (Test-InterfaceGrafica)) {
-        $resumo = Get-ResumoDaSessao
-        Clear-ResumoDaSessao
-        if (Read-SimNao -Pergunta "$resumo`n`nO atalho Doceterapia está na Área de Trabalho. Abrir o sistema agora?") {
-            Start-Process -FilePath $atalho
-        }
-    }
+    Set-EtapaProgresso 'Criando o atalho na Área de Trabalho'
+    $null = New-AtalhoSistema -Ctx $Ctx -Url "http://localhost:$(Get-PortaFrontEnd -Linhas $linhas)"
 }
 
 function Invoke-ComandoUp {

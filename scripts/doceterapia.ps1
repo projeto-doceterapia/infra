@@ -4,26 +4,11 @@
 
 $ErrorActionPreference = 'Stop'
 
-foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho') {
+foreach ($biblioteca in 'Mensagens', 'Interface', 'ArquivoEnv', 'Segredos', 'Docker', 'Http', 'Configuracao', 'Atalho', 'Progresso', 'Painel') {
     . (Join-Path $PSScriptRoot "lib\$biblioteca.ps1")
 }
 foreach ($arquivoComando in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'comandos') -Filter '*.ps1') {
     . $arquivoComando.FullName
-}
-
-function Invoke-MenuPrincipal {
-    # Each choice runs like the subcommand of the same name; the menu comes back
-    # until the window is closed.
-    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    while ($comando = Show-MenuPrincipal) {
-        $argumentos = @($comando)
-        if ($comando -eq 'restore') {
-            $pasta = Select-PastaBackup -Ctx $Ctx
-            if (-not $pasta) { continue }
-            $argumentos += $pasta
-        }
-        $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos $argumentos
-    }
 }
 
 function Invoke-Doceterapia {
@@ -71,7 +56,7 @@ function Invoke-Doceterapia {
             default { Stop-Launcher -Codigo $CODIGO_USO -Mensagem 'Comando desconhecido. Rode: doceterapia ajuda' }
         }
         $resumo = Get-ResumoDaSessao
-        if ($resumo -and (Test-InterfaceGrafica)) {
+        if ($resumo -and (Test-InterfaceGrafica) -and -not (Test-JanelaProgresso)) {
             Show-Mensagem -Texto $resumo
         }
         return $CODIGO_SUCESSO

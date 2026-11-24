@@ -128,7 +128,7 @@ function Show-PerguntaSimNao {
 }
 
 function Show-MenuPrincipal {
-    # Returns the chosen subcommand, or $null when the window is closed.
+    # Returns the chosen option (Rotulo and Comando), or $null when closed.
     $alturaBotao = 40
     $janela = New-JanelaBase -Largura 320 -Altura (60 + $OPCOES_MENU.Count * $alturaBotao + 50)
 
@@ -138,14 +138,14 @@ function Show-MenuPrincipal {
     $titulo.Size = New-Object System.Drawing.Size(288, 28)
     $janela.Controls.Add($titulo)
 
-    $escolha = @{ Comando = $null }
+    $escolha = @{ Opcao = $null }
     $y = 52
     foreach ($opcao in $OPCOES_MENU) {
         $botao = New-Botao -Texto $opcao.Rotulo -X 16 -Y $y -Largura 288
-        $botao.Tag = $opcao.Comando
+        $botao.Tag = $opcao
         $botao.Add_Click({
                 param($origem)
-                $escolha.Comando = $origem.Tag
+                $escolha.Opcao = $origem.Tag
                 $origem.FindForm().Close()
             })
         $janela.Controls.Add($botao)
@@ -157,7 +157,7 @@ function Show-MenuPrincipal {
 
     try {
         $null = $janela.ShowDialog()
-        return $escolha.Comando
+        return $escolha.Opcao
     }
     finally {
         $janela.Dispose()

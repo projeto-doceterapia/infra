@@ -50,6 +50,11 @@ function Invoke-DockerNativo {
     elseif ($Capturar) {
         $saida = @(& docker @Argumentos 2>$null | ForEach-Object { "$_" })
     }
+    elseif (Test-JanelaProgresso) {
+        # Compose writes its progress to stderr, which the window must show too.
+        $saida = @()
+        & docker @Argumentos 2>&1 | ForEach-Object { Add-LinhaProgresso "$_" }
+    }
     else {
         $saida = @()
         & docker @Argumentos | Out-Host

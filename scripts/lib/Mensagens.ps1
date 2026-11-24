@@ -29,6 +29,7 @@ function Write-Texto {
     # With the dialogs on, the text is also kept to be shown when the command ends.
     param([string]$Texto = '')
     Write-Host $Texto
+    Add-LinhaProgresso $Texto
     if (Test-InterfaceGrafica) { $script:ResumoDaSessao.Add($Texto) }
 }
 
@@ -38,23 +39,37 @@ function Get-ResumoDaSessao {
 
 function Clear-ResumoDaSessao {
     $script:ResumoDaSessao.Clear()
+    $script:UltimoErro = $null
 }
 
 function Write-Erro {
+    # Inside the progress window the error becomes its final status instead of
+    # a second dialog.
     param([string]$Texto)
     Write-Host $Texto -ForegroundColor Red
+    $script:UltimoErro = $Texto
+    if (Test-JanelaProgresso) {
+        Add-LinhaProgresso "ERRO: $Texto"
+        return
+    }
     if (Test-InterfaceGrafica) { Show-Mensagem -Texto $Texto -Tipo Erro }
+}
+
+function Get-UltimoErro {
+    return $script:UltimoErro
 }
 
 function Write-Aviso {
     param([string]$Texto)
     Write-Host $Texto -ForegroundColor Yellow
+    Add-LinhaProgresso "AVISO: $Texto"
     if (Test-InterfaceGrafica) { Show-Mensagem -Texto $Texto -Tipo Aviso }
 }
 
 function Write-Simulacao {
     param([string]$Texto)
     Write-Host "[simulação] $Texto" -ForegroundColor Cyan
+    Add-LinhaProgresso "[simulação] $Texto"
 }
 
 function Assert-SemArgumentos {
