@@ -27,8 +27,10 @@ function Invoke-AcaoDoMenu {
         [Parameter(Mandatory = $true)][string]$Rotulo
     )
     switch ($Comando) {
+        'abrir' { Invoke-AbrirPeloPainel -Ctx $Ctx; return }
         'configurar' { Invoke-AssistenteConfiguracao -Ctx $Ctx; return }
         'configuracoes' { Invoke-JanelaConfiguracoes -Ctx $Ctx; return }
+        'ver-logs' { Invoke-VerLogs -Ctx $Ctx; return }
     }
     if ($ACOES_COM_PROGRESSO -notcontains $Comando) {
         $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @($Comando)
@@ -43,8 +45,49 @@ function Invoke-AcaoDoMenu {
     $acaoFinal = if ($Comando -eq 'up') { 'Abrir sistema' } else { $null }
     $resultado = Invoke-AcaoComProgresso -Titulo $Rotulo -AcaoFinal $acaoFinal -Acao { Invoke-Doceterapia -Ctx $Ctx -Argumentos $argumentos }
     if ($resultado.AcaoEscolhida) {
-        $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('abrir')
+        Invoke-AbrirPeloPainel -Ctx $Ctx
     }
+}
+
+function Get-EstadoDoPainel {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $configurado = Test-Path -LiteralPath $Ctx.CaminhoEnv
+    $url = Get-UrlSistema -Ctx $Ctx
+    return [pscustomobject]@{
+        Configurado = $configurado
+        Url         = $url
+        Ligado      = ($configurado -and (Test-SistemaRespondendo -Url $url))
+    }
+}
+
+function Invoke-AbrirPeloPainel {
+    # A stopped system is offered a start first, so the button always ends on
+    # the open application.
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $url = Get-UrlSistema -Ctx $Ctx
+    if (-not (Test-SistemaRespondendo -Url $url)) {
+        if (-not (Read-SimNao -Pergunta 'O sistema está desligado. Ligar agora e abrir em seguida?' -Padrao $true)) { return }
+        $resultado = Invoke-AcaoComProgresso -Titulo 'Ligar o sistema' -Acao { Invoke-Doceterapia -Ctx $Ctx -Argumentos @('up') }
+        if ($resultado.Codigo -ne $CODIGO_SUCESSO) { return }
+    }
+    Start-AplicativoNavegador -Ctx $Ctx -Url $url
+}
+
+function Invoke-VerLogs {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $estado = @{ Servicos = @() }
+    $codigo = Invoke-ComTratamento -Acao {
+        Assert-ConfiguracaoExiste -Ctx $Ctx
+        Assert-DockerLigado -Ctx $Ctx
+        $estado.Servicos = @(Get-ServicosEmExecucao -Ctx $Ctx)
+    }
+    if ($codigo -ne $CODIGO_SUCESSO) { return }
+    if ($estado.Servicos.Count -eq 0) {
+        Show-Mensagem -Texto 'Nenhum serviço está ligado. Ligue o sistema para ver os registros.' -Tipo Aviso
+        return
+    }
+    $servico = Show-EscolhaServico -Servicos $estado.Servicos
+    if ($servico) { Start-ConsoleLogs -Ctx $Ctx -Servico $servico }
 }
 
 function Test-DonaPendente {
@@ -78,7 +121,7 @@ function Invoke-AssistenteConfiguracao {
         $Ctx.Remove('Respostas')
     }
     if ($resultado.AcaoEscolhida) {
-        $null = Invoke-Doceterapia -Ctx $Ctx -Argumentos @('abrir')
+        Invoke-AbrirPeloPainel -Ctx $Ctx
     }
 }
 
@@ -130,7 +173,7 @@ function Invoke-JanelaConfiguracoes {
 function Invoke-MenuPrincipal {
     # The menu comes back after each action until the window is closed.
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    while ($opcao = Show-MenuPrincipal) {
+    while ($opcao = Show-MenuPrincipal -Estado (Get-EstadoDoPainel -Ctx $Ctx)) {
         Invoke-AcaoDoMenu -Ctx $Ctx -Comando $opcao.Comando -Rotulo $opcao.Rotulo
     }
 }

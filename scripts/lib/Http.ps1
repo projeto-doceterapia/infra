@@ -1,6 +1,22 @@
 ﻿# HTTP sign-in used to confirm the first user. The body carries the password, so
 # neither it nor the request details are ever printed.
 
+function Test-SistemaRespondendo {
+    param([Parameter(Mandatory = $true)][string]$Url)
+    $progresso = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        $resposta = Invoke-WebRequest -Uri $Url -Method Get -UseBasicParsing -TimeoutSec 3
+        return ([int]$resposta.StatusCode -lt 400)
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $ProgressPreference = $progresso
+    }
+}
+
 function Invoke-LoginUsuario {
     # Returns the HTTP status, or 0 when the server did not answer.
     param(

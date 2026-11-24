@@ -69,15 +69,33 @@ function New-AtalhoSistema {
     return $destino
 }
 
-function Invoke-AbrirSistema {
+function Get-UrlSistema {
     param([Parameter(Mandatory = $true)][hashtable]$Ctx)
-    $atalho = Join-Path $Ctx.PastaAtalho $NOME_ATALHO
-    if (-not (Test-Path -LiteralPath $atalho)) {
-        Stop-Launcher -Codigo $CODIGO_CONFIGURACAO -Mensagem 'O atalho ainda não existe. Ligue o sistema primeiro: doceterapia up'
-    }
-    if ($Ctx.Simular) {
-        Write-Simulacao "abriria $atalho"
+    return "http://localhost:$(Get-PortaFrontEnd -Linhas (Read-ConfiguracaoAtual -Ctx $Ctx))"
+}
+
+function Start-AplicativoNavegador {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Ctx,
+        [Parameter(Mandatory = $true)][string]$Url
+    )
+    $navegador = Get-CaminhoNavegador
+    if ($navegador) {
+        Start-Process -FilePath $navegador -ArgumentList (Get-ArgumentosAppNavegador -Url $Url -PastaPerfil $Ctx.PastaPerfilNavegador)
         return
     }
-    Start-Process -FilePath $atalho
+    Start-Process -FilePath $Url
+}
+
+function Invoke-AbrirSistema {
+    param([Parameter(Mandatory = $true)][hashtable]$Ctx)
+    $url = Get-UrlSistema -Ctx $Ctx
+    if ($Ctx.Simular) {
+        Write-Simulacao "abriria $url numa janela própria."
+        return
+    }
+    if (-not (Test-SistemaRespondendo -Url $url)) {
+        Stop-Launcher -Codigo $CODIGO_PRE_REQUISITO -Mensagem 'O sistema não está respondendo. Ligue o sistema primeiro: doceterapia up'
+    }
+    Start-AplicativoNavegador -Ctx $Ctx -Url $url
 }

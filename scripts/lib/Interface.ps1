@@ -3,21 +3,26 @@
 # block an automated run.
 
 $TITULO_JANELA = 'Doceterapia'
+# Darker shade of the front-end primary color, readable with white text.
+$COR_DESTAQUE = '#B85F63'
 $ICONE_SISTEMA = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\assets\doceterapia.ico'))
 $script:InterfaceGrafica = $false
 
+# Secondary actions, two per row. The primary action is chosen by the state.
 $OPCOES_MENU = @(
-    @{ Rotulo = 'Verificar o computador'; Comando = 'doctor' },
+    @{ Rotulo = 'Ligar o sistema'; Comando = 'up' },
+    @{ Rotulo = 'Desligar o sistema'; Comando = 'down' },
     @{ Rotulo = 'Configurar (primeira vez)'; Comando = 'configurar' },
     @{ Rotulo = 'Configurações do WhatsApp'; Comando = 'configuracoes' },
-    @{ Rotulo = 'Ligar o sistema'; Comando = 'up' },
-    @{ Rotulo = 'Abrir o sistema'; Comando = 'abrir' },
-    @{ Rotulo = 'Desligar o sistema'; Comando = 'down' },
+    @{ Rotulo = 'Ver logs'; Comando = 'ver-logs' },
     @{ Rotulo = 'Fazer backup'; Comando = 'backup' },
     @{ Rotulo = 'Restaurar um backup'; Comando = 'restore' },
     @{ Rotulo = 'Atualizar'; Comando = 'atualizar' },
-    @{ Rotulo = 'Apagar e recriar o banco'; Comando = 'resetar-banco' }
+    @{ Rotulo = 'Verificar o computador'; Comando = 'doctor' }
 )
+$OPCAO_PERIGOSA = @{ Rotulo = 'Apagar e recriar o banco'; Comando = 'resetar-banco' }
+$OPCAO_ABRIR = @{ Rotulo = 'Abrir sistema'; Comando = 'abrir' }
+$OPCAO_CONFIGURAR = @{ Rotulo = 'Configurar o sistema'; Comando = 'configurar' }
 
 function Enable-InterfaceGrafica {
     Add-Type -AssemblyName System.Windows.Forms
@@ -128,37 +133,99 @@ function Show-PerguntaSimNao {
     return ($resposta -eq [System.Windows.Forms.DialogResult]::Yes)
 }
 
+function Get-TextoEstado {
+    param([Parameter(Mandatory = $true)]$Estado)
+    if (-not $Estado.Configurado) { return 'O sistema ainda não foi configurado.' }
+    if ($Estado.Ligado) { return "Sistema ligado em $($Estado.Url)" }
+    return 'Sistema desligado.'
+}
+
 function Show-MenuPrincipal {
     # Returns the chosen option (Rotulo and Comando), or $null when closed.
-    $alturaBotao = 40
-    $janela = New-JanelaBase -Largura 320 -Altura (60 + $OPCOES_MENU.Count * $alturaBotao + 50)
+    param([Parameter(Mandatory = $true)]$Estado)
+    $janela = New-JanelaBase -Largura 520 -Altura 520
+    $janela.TopMost = $false
+    $escolha = @{ Opcao = $null }
+    $escolher = {
+        param($origem)
+        $escolha.Opcao = $origem.Tag
+        $origem.FindForm().Close()
+    }
 
     $titulo = New-Object System.Windows.Forms.Label
-    $titulo.Text = 'O que você quer fazer?'
-    $titulo.Location = New-Object System.Drawing.Point(16, 16)
-    $titulo.Size = New-Object System.Drawing.Size(288, 28)
-    $janela.Controls.Add($titulo)
+    $titulo.Text = 'Doceterapia'
+    $titulo.Font = New-Object System.Drawing.Font('Segoe UI', 18, [System.Drawing.FontStyle]::Bold)
+    $titulo.Location = New-Object System.Drawing.Point(20, 14)
+    $titulo.Size = New-Object System.Drawing.Size(480, 38)
+    $situacao = New-Object System.Windows.Forms.Label
+    $situacao.Text = Get-TextoEstado -Estado $Estado
+    $situacao.Location = New-Object System.Drawing.Point(22, 54)
+    $situacao.Size = New-Object System.Drawing.Size(478, 24)
+    $situacao.ForeColor = if ($Estado.Ligado) { [System.Drawing.Color]::FromArgb(30, 120, 60) } else { [System.Drawing.Color]::FromArgb(110, 110, 110) }
+    $janela.Controls.AddRange(@($titulo, $situacao))
 
-    $escolha = @{ Opcao = $null }
-    $y = 52
-    foreach ($opcao in $OPCOES_MENU) {
-        $botao = New-Botao -Texto $opcao.Rotulo -X 16 -Y $y -Largura 288
-        $botao.Tag = $opcao
-        $botao.Add_Click({
-                param($origem)
-                $escolha.Opcao = $origem.Tag
-                $origem.FindForm().Close()
-            })
+    $opcaoPrincipal = if ($Estado.Configurado) { $OPCAO_ABRIR } else { $OPCAO_CONFIGURAR }
+    $principal = New-Botao -Texto $opcaoPrincipal.Rotulo -X 20 -Y 88 -Largura 480
+    $principal.Height = 64
+    $principal.Font = New-Object System.Drawing.Font('Segoe UI', 14, [System.Drawing.FontStyle]::Bold)
+    $principal.FlatStyle = 'Flat'
+    $principal.FlatAppearance.BorderSize = 0
+    $principal.BackColor = [System.Drawing.ColorTranslator]::FromHtml($COR_DESTAQUE)
+    $principal.ForeColor = [System.Drawing.Color]::White
+    $principal.Tag = $opcaoPrincipal
+    $principal.Add_Click($escolher)
+    $janela.Controls.Add($principal)
+    $janela.AcceptButton = $principal
+
+    $y = 168
+    for ($indice = 0; $indice -lt $OPCOES_MENU.Count; $indice++) {
+        $x = if ($indice % 2 -eq 0) { 20 } else { 264 }
+        $botao = New-Botao -Texto $OPCOES_MENU[$indice].Rotulo -X $x -Y $y -Largura 236
+        $botao.Tag = $OPCOES_MENU[$indice]
+        $botao.Add_Click($escolher)
         $janela.Controls.Add($botao)
-        $y += $alturaBotao
+        if ($indice % 2 -eq 1) { $y += 40 }
     }
-    $fechar = New-Botao -Texto 'Fechar' -X 204 -Y ($y + 8) -Resultado Cancel
+    $perigosa = New-Botao -Texto $OPCAO_PERIGOSA.Rotulo -X 20 -Y ($y + 8) -Largura 236
+    $perigosa.ForeColor = [System.Drawing.Color]::FromArgb(180, 30, 30)
+    $perigosa.Tag = $OPCAO_PERIGOSA
+    $perigosa.Add_Click($escolher)
+    $fechar = New-Botao -Texto 'Fechar' -X 400 -Y ($y + 8) -Resultado Cancel
     $janela.CancelButton = $fechar
-    $janela.Controls.Add($fechar)
+    $janela.Controls.AddRange(@($perigosa, $fechar))
+    $janela.ClientSize = New-Object System.Drawing.Size(520, ($y + 60))
 
     try {
         $null = $janela.ShowDialog()
         return $escolha.Opcao
+    }
+    finally {
+        $janela.Dispose()
+    }
+}
+
+function Show-EscolhaServico {
+    # Returns the chosen service, or $null when cancelled.
+    param([Parameter(Mandatory = $true)][string[]]$Servicos)
+    $janela = New-JanelaBase -Largura 360 -Altura 140
+    $rotulo = New-Object System.Windows.Forms.Label
+    $rotulo.Text = 'Ver os registros de qual serviço?'
+    $rotulo.Location = New-Object System.Drawing.Point(12, 12)
+    $rotulo.Size = New-Object System.Drawing.Size(336, 24)
+    $lista = New-Object System.Windows.Forms.ComboBox
+    $lista.DropDownStyle = 'DropDownList'
+    $lista.Location = New-Object System.Drawing.Point(12, 42)
+    $lista.Size = New-Object System.Drawing.Size(336, 28)
+    $lista.Items.AddRange([object[]]$Servicos)
+    $lista.SelectedIndex = [Math]::Max(0, [Array]::IndexOf($Servicos, 'back-end'))
+    $ok = New-Botao -Texto 'Abrir' -X 142 -Y 94 -Resultado OK
+    $cancelar = New-Botao -Texto 'Cancelar' -X 248 -Y 94 -Resultado Cancel
+    $janela.AcceptButton = $ok
+    $janela.CancelButton = $cancelar
+    $janela.Controls.AddRange(@($rotulo, $lista, $ok, $cancelar))
+    try {
+        if ($janela.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return "$($lista.SelectedItem)" }
+        return $null
     }
     finally {
         $janela.Dispose()
