@@ -36,7 +36,7 @@ Describe 'estado do painel' {
 
 Describe 'pedidos da janela' {
     Mock Wait-RespostaDoPainel { $true }
-    Mock Start-AplicativoNavegador { }
+    Mock Start-AplicativoNavegador { $true }
     $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'pedidos')
     New-EnvPreenchido -Ctx $ctx
 
@@ -53,14 +53,30 @@ Describe 'pedidos da janela' {
         finally { $script:Painel = $null }
     }
 
-    It 'abrir com o sistema no ar abre o navegador e fecha o painel' {
+    It 'abrir com o sistema no ar mostra o carregamento e passa a acompanhar o navegador' {
         Mock Test-SistemaRespondendo { $true }
         $script:Painel = New-EstadoPainel
         try {
             Invoke-PedidoDoPainel -Ctx $ctx -Pedido @{ Acao = 'abrir' }
             Assert-MockCalled Start-AplicativoNavegador -Times 1 -Exactly -Scope It
-            Get-TiposDosEventos | Should Be 'Fechar'
-            $script:Painel.Encerrar | Should Be $true
+            Get-TiposDosEventos | Should Be 'Carregando'
+            $script:MonitorNavegador.Fase | Should Be 'Abrindo'
+            $script:Painel.Encerrar | Should Be $false
+        }
+        finally {
+            $script:Painel = $null
+            $script:MonitorNavegador = $null
+        }
+    }
+
+    It 'sem navegador de aplicativo, abre no navegador padrão e volta ao menu' {
+        Mock Test-SistemaRespondendo { $true }
+        Mock Start-AplicativoNavegador { $false }
+        $script:Painel = New-EstadoPainel
+        try {
+            Invoke-PedidoDoPainel -Ctx $ctx -Pedido @{ Acao = 'abrir' }
+            Get-TiposDosEventos | Should Be 'Carregando,Menu'
+            $script:MonitorNavegador | Should Be $null
         }
         finally { $script:Painel = $null }
     }
@@ -78,7 +94,8 @@ Describe 'pedidos da janela' {
         finally { $script:Painel = $null }
     }
 
-    It 'abrir com o sistema parado liga, abre e fecha o painel' {
+    It 'abrir com o sistema parado liga e abre' {
+        Mock Start-AplicativoNavegador { $true }
         Mock Test-SistemaRespondendo { $false }
         Mock Read-SimNao { $true }
         Mock Invoke-Doceterapia { 0 }
@@ -87,9 +104,12 @@ Describe 'pedidos da janela' {
             Invoke-PedidoDoPainel -Ctx $ctx -Pedido @{ Acao = 'abrir' }
             Assert-MockCalled Invoke-Doceterapia -Times 1 -Exactly -Scope It -ParameterFilter { $Argumentos -join ' ' -eq 'up' }
             Assert-MockCalled Start-AplicativoNavegador -Times 1 -Exactly -Scope It
-            Get-TiposDosEventos | Should Be 'Inicio,Fim,Fechar'
+            Get-TiposDosEventos | Should Be 'Inicio,Fim,Carregando'
         }
-        finally { $script:Painel = $null }
+        finally {
+            $script:Painel = $null
+            $script:MonitorNavegador = $null
+        }
     }
 
     It 'abrir não abre o navegador quando a subida falha' {
@@ -201,6 +221,116 @@ Describe 'pedidos da janela' {
             $script:Painel.Encerrar | Should Be $true
         }
         finally { $script:Painel = $null }
+    }
+}
+
+Describe 'acompanhamento do navegador' {
+    $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'navegador')
+
+    It 'esconde o painel quando a janela do sistema aparece e volta ao menu quando ela fecha' {
+        $script:Painel = New-EstadoPainel
+        try {
+            Start-MonitorNavegador
+            Mock Test-JanelaNavegadorAberta { $true }
+            Update-MonitorNavegador -Ctx $ctx
+            $script:MonitorNavegador.Fase | Should Be 'Aberto'
+
+            Mock Test-JanelaNavegadorAberta { $false }
+            $script:MonitorNavegador.ProximaChecagem = Get-Date
+            Update-MonitorNavegador -Ctx $ctx
+            Get-TiposDosEventos | Should Be 'Ocultar,Mostrar,Menu'
+            $script:MonitorNavegador | Should Be $null
+        }
+        finally {
+            $script:Painel = $null
+            $script:MonitorNavegador = $null
+        }
+    }
+
+    It 'volta ao menu quando a janela não aparece a tempo' {
+        Mock Test-JanelaNavegadorAberta { $false }
+        $script:Painel = New-EstadoPainel
+        try {
+            Start-MonitorNavegador
+            $script:MonitorNavegador.Limite = (Get-Date).AddSeconds(-1)
+            Update-MonitorNavegador -Ctx $ctx
+            Get-TiposDosEventos | Should Be 'Menu'
+            $script:MonitorNavegador | Should Be $null
+        }
+        finally {
+            $script:Painel = $null
+            $script:MonitorNavegador = $null
+        }
+    }
+
+    It 'espera o intervalo entre duas checagens' {
+        Mock Test-JanelaNavegadorAberta { $true }
+        $script:Painel = New-EstadoPainel
+        try {
+            Start-MonitorNavegador
+            $script:MonitorNavegador.ProximaChecagem = (Get-Date).AddMinutes(1)
+            Update-MonitorNavegador -Ctx $ctx
+            Assert-MockCalled Test-JanelaNavegadorAberta -Times 0 -Exactly -Scope It
+        }
+        finally {
+            $script:Painel = $null
+            $script:MonitorNavegador = $null
+        }
+    }
+
+}
+
+Describe 'janela do navegador' {
+    Context 'janela do sistema aberta' {
+        Mock Get-CimInstance {
+            @(
+                [pscustomobject]@{ ProcessId = 11; CommandLine = 'msedge.exe --user-data-dir="C:\Outro\perfil"' },
+                [pscustomobject]@{ ProcessId = 12; CommandLine = 'msedge.exe --user-data-dir="C:\Dados\DOCETERAPIA\navegador" --type=renderer' },
+                [pscustomobject]@{ ProcessId = 13; CommandLine = 'msedge.exe --app=x --user-data-dir="C:\Dados\Doceterapia\navegador"' }
+            )
+        }
+        Mock Test-ProcessoComJanela { $Id -eq 13 }
+
+        It 'conta só processos do perfil do sistema com janela visível' {
+            Test-JanelaNavegadorAberta -PastaPerfil 'C:\Dados\Doceterapia\navegador' | Should Be $true
+            Assert-MockCalled Test-ProcessoComJanela -Times 0 -Exactly -Scope It -ParameterFilter { $Id -eq 11 }
+        }
+    }
+
+    Context 'só processos em segundo plano' {
+        Mock Get-CimInstance { @([pscustomobject]@{ ProcessId = 12; CommandLine = 'msedge.exe --user-data-dir="C:\Dados\Doceterapia\navegador" --type=renderer' }) }
+        Mock Test-ProcessoComJanela { $false }
+
+        It 'sem janela visível do perfil, o sistema está fechado' {
+            Test-JanelaNavegadorAberta -PastaPerfil 'C:\Dados\Doceterapia\navegador' | Should Be $false
+        }
+    }
+}
+
+Describe 'instância única' {
+    $nome = "Local\Doceterapia.Teste.$([guid]::NewGuid())"
+
+    It 'só a primeira instância fica com o painel' {
+        $primeira = Enter-InstanciaUnica -Nome $nome
+        try {
+            $primeira | Should Not Be $null
+            Enter-InstanciaUnica -Nome $nome | Should Be $null
+        }
+        finally { Exit-InstanciaUnica -Mutex $primeira }
+    }
+
+    It 'a segunda instância pede foco à primeira' {
+        $sinalNome = "Local\Doceterapia.Teste.Foco.$([guid]::NewGuid())"
+        $sinal = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::AutoReset, $sinalNome)
+        try {
+            Request-FocoDaInstancia -Nome $sinalNome | Should Be $true
+            $sinal.WaitOne(0) | Should Be $true
+        }
+        finally { $sinal.Dispose() }
+    }
+
+    It 'sem painel aberto, o pedido de foco não encontra ninguém' {
+        Request-FocoDaInstancia -Nome "Local\Doceterapia.Teste.Ninguem.$([guid]::NewGuid())" | Should Be $false
     }
 }
 

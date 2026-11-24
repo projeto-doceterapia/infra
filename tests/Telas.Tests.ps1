@@ -106,6 +106,31 @@ Describe 'janela principal' {
         (Get-PedidosDaJanela -Janela $janela)[-1].Acao | Should Be 'abrir'
     }
 
+    It 'mostra o carregamento pedido pelos comandos e se esconde e volta com o navegador' {
+        Mock Show-JanelaEmFoco { }
+        $janela = New-JanelaDeTeste
+        Invoke-EventoNaJanela -Janela $janela -Evento @{ Tipo = 'Carregando'; Texto = 'Abrindo o sistema...' }
+        Find-Controle -Raiz (Get-TelaAtual -Janela $janela) -Texto 'Abrindo o sistema...' | Should Not Be $null
+        Invoke-EventoNaJanela -Janela $janela -Evento @{ Tipo = 'Ocultar' }
+        $janela.Visible | Should Be $false
+        Invoke-EventoNaJanela -Janela $janela -Evento @{ Tipo = 'Mostrar' }
+        Assert-MockCalled Show-JanelaEmFoco -Times 1 -Exactly -Scope It
+    }
+
+    It 'vem para a frente quando outra instância pede foco' {
+        Mock Show-JanelaEmFoco { }
+        $janela = New-JanelaDeTeste
+        $janela.Tag.Estado.SinalFoco = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::AutoReset)
+        try {
+            Invoke-CicloDaJanela -Janela $janela
+            Assert-MockCalled Show-JanelaEmFoco -Times 0 -Exactly -Scope It
+            $null = $janela.Tag.Estado.SinalFoco.Set()
+            Invoke-CicloDaJanela -Janela $janela
+            Assert-MockCalled Show-JanelaEmFoco -Times 1 -Exactly -Scope It
+        }
+        finally { $janela.Tag.Estado.SinalFoco.Dispose() }
+    }
+
     It 'responde as perguntas dos comandos' {
         Mock Invoke-PerguntaNaJanela { 'resposta' }
         $janela = New-JanelaDeTeste
