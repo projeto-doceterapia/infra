@@ -76,3 +76,36 @@ Describe 'atalho do sistema' {
         }
     }
 }
+
+Describe 'criar-atalhos' {
+    Mock Get-CaminhoNavegador { 'C:\Navegador\msedge.exe' }
+
+    Context 'com navegador' {
+        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'ambos')
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('criar-atalhos')
+        $painel = Join-Path $ctx.PastaAtalho 'Doceterapia - Painel.lnk'
+
+        It 'cria o atalho do painel e o do sistema' {
+            $resultado.Codigo | Should Be 0
+            Test-Path -LiteralPath $painel | Should Be $true
+            Test-Path -LiteralPath (Join-Path $ctx.PastaAtalho 'Doceterapia.lnk') | Should Be $true
+        }
+
+        It 'abre o painel pelo wscript, sem console' {
+            $atalho = (New-Object -ComObject WScript.Shell).CreateShortcut($painel)
+            $atalho.TargetPath | Should Match 'wscript\.exe$'
+            $atalho.Arguments | Should Be "`"$(Join-Path $ctx.Raiz 'doceterapia.vbs')`""
+        }
+    }
+
+    Context 'simulado' {
+        $ctx = New-RaizDeTeste -Pasta (Join-Path $TestDrive 'simulado')
+        $resultado = Invoke-ComCaptura -Ctx $ctx -Argumentos @('criar-atalhos', '-Simular')
+
+        It 'não cria nenhum atalho' {
+            $resultado.Codigo | Should Be 0
+            $resultado.Texto | Should Match 'criaria o atalho'
+            @(Get-ChildItem -LiteralPath $ctx.PastaAtalho -Filter '*.lnk').Count | Should Be 0
+        }
+    }
+}
